@@ -1,0 +1,18 @@
+[project]
+name = "texflow"
+version = "0.1.0"
+description = "Supercharge your texturing workflow with AI"
+readme = "README.md"
+requires-python = "==3.11.7"
+dependencies = [
+    "diffusers>=0.30.3",
+    "numpy==1.26.3",
+    "pillow>=10.2.0",
+    "toml>=0.10.2",
+    "torch>=2.4.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "fake-bpy-module>=20241010",
+]
