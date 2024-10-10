@@ -66,11 +66,13 @@ def load_pipe(
 
 def set_pipe_type(pipe, type="text2image"):
     if type == "text2image":
-        return AutoPipelineForText2Image.from_pipe(pipe)
+        pipe = AutoPipelineForText2Image.from_pipe(pipe)
     elif type == "image2image":
-        return AutoPipelineForImage2Image.from_pipe(pipe)
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
     elif type == "inpainting":
-        return AutoPipelineForInpainting.from_pipe(pipe)
+        pipe = AutoPipelineForInpainting.from_pipe(pipe)
+    else:
+        raise ValueError(type)
     pipe = _post_pipe_init(pipe)
     return pipe
 
@@ -83,7 +85,7 @@ def run_pipe(
     image2image_strength: float = 0.8,
     inpainting_image=None,
     inpainting_mask_image=None,
-    inpainting_strength=None,
+    inpainting_strength=1.0,
     control_image: list | None = None,
     height: int = 512,
     width: int = 512,

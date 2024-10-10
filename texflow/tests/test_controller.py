@@ -71,3 +71,23 @@ class TestController(unittest.TestCase):
         )
         image = output["images"][0]
         self.assertIsInstance(image, Image.Image)
+
+    def test_run_pipe_stable_diffusion_inpaint(self):
+        pipe = load_pipe(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            dtype_override=torch.float32,
+        )
+        pipe = set_pipe_type(pipe, "inpainting")
+        image = (torch.rand(3, 64, 64) * 255).to(torch.uint8)
+        mask_image = (torch.randn(64, 64) > 0) * 1.0
+        output = run_pipe(
+            pipe,
+            prompt="rabbit",
+            inpainting_image=image,
+            inpainting_mask_image=mask_image,
+            num_inference_steps=2,
+            height=64,
+            width=64,
+        )
+        image = output["images"][0]
+        self.assertIsInstance(image, Image.Image)
