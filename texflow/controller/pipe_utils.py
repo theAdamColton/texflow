@@ -32,35 +32,35 @@ def get_best_device_and_dtype():
     return device, dtype
 
 
+def _post_pipe_init(pipe):
+    pipe.safety_checker = None
+    return pipe
+
+
 def load_pipe(
     pretrained_model_or_path,
     controlnet_models_or_paths: list | None = None,
     token=None,
-    force_cpu=False,
     dtype_override=None,
 ):
+    kwargs = {}
     _, dtype = get_best_device_and_dtype()
     if dtype_override is not None:
         dtype = dtype_override
-
-    device_map = None
-    if force_cpu:
-        device_map = "cpu"
+    kwargs["torch_dtype"] = dtype
 
     if controlnet_models_or_paths is not None:
         controlnets = [
-            ControlNetModel(path, torch_dtype=dtype, device_map=device_map)
+            ControlNetModel(path, torch_dtype=dtype)
             for path in controlnet_models_or_paths
         ]
-    else:
-        controlnets = None
-    pipe = AutoPipelineForText2Image.from_pretrained(
-        pretrained_model_or_path,
-        controlnet=controlnets,
-        torch_dtype=dtype,
-        token=token,
-        device_map=device_map,
-    )
+        kwargs["controlnet"] = controlnets
+
+    if token is not None:
+        kwargs["token"] = token
+
+    pipe = AutoPipelineForText2Image.from_pretrained(pretrained_model_or_path, **kwargs)
+    pipe = _post_pipe_init(pipe)
     return pipe
 
 
@@ -71,3 +71,5 @@ def set_pipe_type(pipe, type="text2image"):
         return AutoPipelineForImage2Image.from_pipe(pipe)
     elif type == "inpainting":
         return AutoPipelineForInpainting.from_pipe(pipe)
+    pipe = _post_pipe_init(pipe)
+    return pipe

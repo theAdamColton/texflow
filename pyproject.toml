@@ -5,11 +5,13 @@ description = "Supercharge your texturing workflow with AI"
 readme = "README.md"
 requires-python = "==3.11.7"
 dependencies = [
+    "accelerate>=1.0.0",
     "diffusers>=0.30.3",
     "numpy==1.26.3",
     "pillow>=10.2.0",
     "toml>=0.10.2",
     "torch>=2.4.1",
+    "transformers>=4.45.2",
 ]
 
 [tool.uv]
