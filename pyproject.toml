@@ -14,5 +14,6 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = [
+    "bpython>=0.24",
     "fake-bpy-module>=20241010",
 ]

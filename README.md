@@ -4,4 +4,5 @@
 # design and coding guidelines
 
 * Only relative imports are allowed
+* texflow/client/__init__.py is the blender entry
 

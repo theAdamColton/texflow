@@ -1,13 +1,19 @@
+import re
 import toml
 import os
 import subprocess
 import shutil
 
-from texflow.utils import PYTHON_VERSION, ROOT_PATH, make_blender_manifest_dict
+from texflow.utils import (
+    PYTHON_VERSION,
+    ROOT_PATH,
+    VERSION_STRING,
+    make_blender_manifest_dict,
+)
 
 if __name__ == "__main__":
     # Set up paths
-    build_dir = ROOT_PATH / "build"
+    build_dir = ROOT_PATH / "build" / VERSION_STRING
     src_root = ROOT_PATH / "texflow"
 
     if build_dir.exists():
@@ -29,7 +35,26 @@ if __name__ == "__main__":
 
     # Change import statements in the moved __init__.py file
     init_content = (build_dir / "__init__.py").read_text()
-    init_content = init_content.replace("from .", f"from .{src_root.name}.client.")
+    # fix single dot relative imports
+    init_content = re.sub(
+        r"^from \.(?=[a-zA-Z])",
+        f"from .{src_root.name}.client.",
+        init_content,
+        flags=re.MULTILINE,
+    )
+    # fix double dot relative imports
+    init_content = re.sub(
+        r"^from \.\.(?=[a-zA-Z])",
+        f"from .{src_root.name}.",
+        init_content,
+        flags=re.MULTILINE,
+    )
+
+    # no other relative imports should exist
+    bad_imports = re.search(rf"^from \.(?!{src_root.name}\.)", init_content)
+    if bad_imports is not None:
+        raise ValueError(f"unsupported relative import! {bad_imports}")
+
     (build_dir / "__init__.py").write_text(init_content)
 
     subprocess.run(["python", "-m", "ensurepip", "--upgrade"], check=True)
@@ -44,7 +69,7 @@ if __name__ == "__main__":
             "--python-version",
             PYTHON_VERSION,
             "-o",
-            "build/requirements-linux.txt",
+            str(build_dir / "requirements-linux.txt"),
         ],
         check=True,
     )
@@ -55,9 +80,9 @@ if __name__ == "__main__":
             "pip",
             "download",
             "-r",
-            "build/requirements-linux.txt",
+            str(build_dir / "requirements-linux.txt"),
             "-d",
-            "build/wheels/",
+            str(build_dir / "wheels"),
             "--no-deps",
             "--only-binary=:all:",
         ],
@@ -66,7 +91,8 @@ if __name__ == "__main__":
 
     # Compile requirements for Windows
     env = os.environ.copy()
-    env["UV_EXTRA_INDEX_URL"] = "https://download.pytorch.org/whl/cu124"
+    torch_index_url = "https://download.pytorch.org/whl/cu124"
+    env["UV_EXTRA_INDEX_URL"] = torch_index_url
     subprocess.run(
         [
             "uv",
@@ -78,7 +104,7 @@ if __name__ == "__main__":
             "--python-version",
             PYTHON_VERSION,
             "-o",
-            "build/requirements-windows.txt",
+            str(build_dir / "requirements-windows.txt"),
         ],
         env=env,
         check=True,
@@ -90,15 +116,15 @@ if __name__ == "__main__":
             "pip",
             "download",
             "-r",
-            "build/requirements-windows.txt",
+            str(build_dir / "requirements-windows.txt"),
             "-d",
-            "build/wheels/",
+            str(build_dir / "wheels"),
             "--platform",
             "win_amd64",
             "--no-deps",
             "--only-binary=:all:",
             "--extra-index-url",
-            "https://download.pytorch.org/whl/cu124",
+            torch_index_url,
         ],
         check=True,
     )
@@ -115,7 +141,7 @@ if __name__ == "__main__":
             "--python-version",
             PYTHON_VERSION,
             "-o",
-            "build/requirements-macos.txt",
+            str(build_dir / "requirements-macos.txt"),
         ],
         check=True,
     )
@@ -126,9 +152,9 @@ if __name__ == "__main__":
             "pip",
             "download",
             "-r",
-            "build/requirements-macos.txt",
+            str(build_dir / "requirements-macos.txt"),
             "-d",
-            "build/wheels/",
+            str(build_dir / "wheels"),
             "--platform",
             "macosx_11_0_arm64",
             "--no-deps",
@@ -166,9 +192,9 @@ if __name__ == "__main__":
             "extension",
             "build",
             "--source-dir",
-            str(build_dir.absolute()),
+            str(build_dir),
             "--output-dir",
-            str(dist_dir.absolute()),
+            str(dist_dir),
             "--split-platforms",
         ],
         check=True,
