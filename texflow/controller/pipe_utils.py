@@ -86,17 +86,21 @@ def run_pipe(
     inpainting_image=None,
     inpainting_mask_image=None,
     inpainting_strength=1.0,
-    control_image: list | None = None,
+    control_images: list | None = None,
     height: int = 512,
     width: int = 512,
     num_inference_steps: int = 20,
     guidance_scale: float | None = 7.5,
-    controlnet_conditioning_scale: None | list[float] = None,
+    controlnet_conditioning_scales: None | list[float] = None,
     control_guidance_start: float = 0.0,
-    control_guidance_end: float = 0.0,
+    control_guidance_end: float = 1.0,
     callback_on_step_end=None,
     seed: int | None = None,
 ):
+    class_name = type(pipe).__name__
+    is_img2img = "Img2Img" in class_name
+    is_inpainting = "Inpaint" in class_name
+
     kwargs = dict(
         prompt=prompt,
         negative_prompt=negative_prompt,
@@ -109,16 +113,17 @@ def run_pipe(
 
     if hasattr(pipe, "controlnet") and pipe.controlnet is not None:
         controlnet_kwargs = dict(
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
+            controlnet_conditioning_scale=controlnet_conditioning_scales,
             control_guidance_start=control_guidance_start,
             control_guidance_end=control_guidance_end,
-            control_image=control_image,
         )
+        if is_img2img or is_inpainting:
+            controlnet_kwargs["control_image"] = control_images
+        else:
+            controlnet_kwargs["image"] = control_images
+
         kwargs.update(controlnet_kwargs)
 
-    class_name = type(pipe).__name__
-
-    is_img2img = "Img2Img" in class_name
     if is_img2img:
         img2img_kwargs = dict(
             image=image2image_image,
@@ -126,7 +131,6 @@ def run_pipe(
         )
         kwargs.update(img2img_kwargs)
 
-    is_inpainting = "Inpaint" in class_name
     if is_inpainting:
         inpainting_kwargs = dict(
             image=inpainting_image,

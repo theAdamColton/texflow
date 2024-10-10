@@ -91,3 +91,65 @@ class TestController(unittest.TestCase):
         )
         image = output["images"][0]
         self.assertIsInstance(image, Image.Image)
+
+    def test_run_pipe_stable_diffusion_controlnet_text2image(self):
+        pipe = load_pipe(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
+        )
+        controlnet_images = [torch.randn(1, 3, 64, 64)]
+        output = run_pipe(
+            pipe,
+            prompt="rabbit",
+            control_images=controlnet_images,
+            controlnet_conditioning_scales=[0.5],
+            num_inference_steps=2,
+            height=64,
+            width=64,
+        )
+        image = output["images"][0]
+        self.assertIsInstance(image, Image.Image)
+
+    def test_run_pipe_stable_diffusion_controlnet_image2image(self):
+        pipe = load_pipe(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
+        )
+        pipe = set_pipe_type(pipe, "image2image")
+        controlnet_images = [torch.randn(1, 3, 64, 64)]
+        image2image_image = torch.randn(3, 64, 64)
+        output = run_pipe(
+            pipe,
+            prompt="rabbit",
+            control_images=controlnet_images,
+            image2image_image=image2image_image,
+            controlnet_conditioning_scales=[0.5],
+            num_inference_steps=2,
+            height=64,
+            width=64,
+        )
+        image = output["images"][0]
+        self.assertIsInstance(image, Image.Image)
+
+    def test_run_pipe_stable_diffusion_controlnet_inpainting(self):
+        pipe = load_pipe(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
+        )
+        pipe = set_pipe_type(pipe, "inpainting")
+        controlnet_images = [torch.randn(1, 3, 64, 64)]
+        inpainting_image = torch.randn(3, 64, 64)
+        inpainting_mask = torch.zeros(64, 64)
+        output = run_pipe(
+            pipe,
+            prompt="rabbit",
+            control_images=controlnet_images,
+            inpainting_image=inpainting_image,
+            inpainting_mask_image=inpainting_mask,
+            controlnet_conditioning_scales=[0.5],
+            num_inference_steps=2,
+            height=64,
+            width=64,
+        )
+        image = output["images"][0]
+        self.assertIsInstance(image, Image.Image)
