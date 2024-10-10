@@ -6,7 +6,7 @@ import unittest
 from ..controller.pipe_utils import load_pipe, run_pipe, set_pipe_type
 
 
-class TestController(unittest.TestCase):
+class TestPipe(unittest.TestCase):
     def test_load_pipe_stable_diffusion(self):
         pipe = load_pipe(
             "hf-internal-testing/tiny-stable-diffusion-pipe",
@@ -45,6 +45,23 @@ class TestController(unittest.TestCase):
 
     def test_run_pipe_stable_diffusion_text2image(self):
         self._test_text2image("hf-internal-testing/tiny-stable-diffusion-pipe")
+
+    def test_run_pipe_stable_diffusion_xl_text2image(self):
+        self._test_text2image("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+    def test_run_pipe_stable_diffusion_xl_image2image(self):
+        self._test_image2image("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+    def test_run_pipe_stable_diffusion_xl_controlnet_text2image(self):
+        self._test_controlnet_text2image(
+            "hf-internal-testing/tiny-stable-diffusion-xl-pipe",
+            "hf-internal-testing/tiny-controlnet-sdxl",
+        )
+
+    def test_run_pipe_flux_text2image(self):
+        self._test_text2image(
+            "hf-internal-testing/tiny-flux-pipe",
+        )
 
     def test_run_pipe_stable_diffusion_image2image(self):
         self._test_image2image("hf-internal-testing/tiny-stable-diffusion-pipe")

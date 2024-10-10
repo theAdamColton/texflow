@@ -1,3 +1,4 @@
+import inspect
 import torch
 from diffusers import ControlNetModel
 from diffusers.pipelines.auto_pipeline import (
@@ -77,6 +78,10 @@ def set_pipe_type(pipe, type="text2image"):
     return pipe
 
 
+def does_pipe_accept_negative_prompt(pipe):
+    return "negative_prompt" in inspect.signature(pipe).parameters.keys()
+
+
 def run_pipe(
     pipe,
     prompt=None,
@@ -103,13 +108,15 @@ def run_pipe(
 
     kwargs = dict(
         prompt=prompt,
-        negative_prompt=negative_prompt,
         height=height,
         width=width,
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         callback_on_step_end=callback_on_step_end,
     )
+
+    if does_pipe_accept_negative_prompt(pipe):
+        kwargs["negative_prompt"] = negative_prompt
 
     if hasattr(pipe, "controlnet") and pipe.controlnet is not None:
         controlnet_kwargs = dict(
