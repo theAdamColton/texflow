@@ -313,6 +313,18 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonargparse"
+version = "4.33.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e2/ef/e22ccbca03491dc74812237c67fb3a9f0e4ef4d254d84a4e788e27d43218/jsonargparse-4.33.2.tar.gz", hash = "sha256:33d600cb86163d43b7eb4905e98fec78f2ec5368bf7c5c2221fc99b48fdd0e86", size = 187779 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/21/1875c58351a9c88de1b3f7314120a64e2af1bf21d056530c4ca603f94942/jsonargparse-4.33.2-py3-none-any.whl", hash = "sha256:bb61f478e3a523c9855ad1d1c1b4e2dc2eaab0af47cd1095989854f19d242ae0", size = 208513 },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -658,6 +670,7 @@ dev = [
     { name = "bpy" },
     { name = "bpython" },
     { name = "fake-bpy-module" },
+    { name = "jsonargparse" },
 ]
 
 [package.metadata]
@@ -676,6 +689,7 @@ dev = [
     { name = "bpy", specifier = ">=4.2.0" },
     { name = "bpython", specifier = ">=0.24" },
     { name = "fake-bpy-module", specifier = ">=20241010" },
+    { name = "jsonargparse", specifier = ">=4.33.2" },
 ]
 
 [[package]]

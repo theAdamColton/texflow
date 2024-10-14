@@ -100,7 +100,7 @@ def run_pipe(
     control_guidance_start: float = 0.0,
     control_guidance_end: float = 1.0,
     callback_on_step_end=None,
-    seed: int | None = None,
+    seed: str | None = None,
 ):
     class_name = type(pipe).__name__
     is_img2img = "Img2Img" in class_name
@@ -147,6 +147,6 @@ def run_pipe(
         kwargs.update(inpainting_kwargs)
 
     if seed is not None:
-        kwargs["generator"] = torch.Generator(pipe.device).manual_seed(seed)
+        kwargs["generator"] = torch.Generator(pipe.device).manual_seed(int(seed))
 
     return pipe(**kwargs)

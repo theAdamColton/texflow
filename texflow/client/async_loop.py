@@ -16,7 +16,69 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-"""Manages the asyncio loop. (Copied from Blender Cloud plugin with minor changes)"""
+"""
+# Manages the asyncio loop. (Copied from Blender Cloud plugin with minor changes)
+
+
+
+
+# 4 examples of operators that move the 3d cursor to scene center: 
+# one syncronous for reference purposes, other three do the same thing asynchronously
+# Test_OT_Async and Test_OT_NoBlock do the same thing, different approach
+
+import bpy
+import asyncio
+
+
+class Test_OT_Operator(bpy.types.Operator):
+    bl_idname = "view3d.sample_1"
+    bl_label = "Synchronous operator that acts immediatly"
+    bl_description = "Center 3d cursor immediately"
+
+    def execute(self, context):
+        bpy.ops.view3D.snap_cursor_to_center()
+        return {'FINISHED'}
+
+class Test_OT_Mixin(bpy.types.Operator, async_loop.AsyncModalOperatorMixin):
+    bl_idname = "view3d.sample_2"
+    bl_label = "Asynchronous operator using AsyncModalOperatorMixin"
+    bl_description = "Center 3d cursor after 3s"
+
+    async def async_execute(self, context):
+        await asyncio.sleep(3)
+        bpy.ops.view3D.snap_cursor_to_center()
+        self.quit()
+
+class Test_OT_Block(bpy.types.Operator):
+    bl_idname = "view3d.sample_3"
+    bl_label = "Asynchronous _blocking_ operator as suggested in blender_cloud readme"
+    bl_description = "Center 3d cursor after 3s"
+
+    async def act(self):
+        await asyncio.sleep(3)
+        bpy.ops.view3D.snap_cursor_to_center()
+
+    def execute(self, context):
+        loop = asyncio.get_event_loop()
+        res = loop.run_until_complete(self.act())
+        return {'FINISHED'}
+
+class Test_OT_NoBlock(bpy.types.Operator):
+    bl_idname = "view3d.sample_4"
+    bl_label = "Asynchronous non-blocking operator as suggested in blender_cloud readme"
+    bl_description = "Center 3d cursor after 3s"
+
+    async def act(self):
+        await asyncio.sleep(3)
+        bpy.ops.view3D.snap_cursor_to_center()
+
+    def execute(self, context):
+        async_task = asyncio.ensure_future(self.act())
+        ## It's also possible to handle the task when it's done like so:
+        #async_task.add_done_callback(done_callback)
+        async_loop.ensure_async_loop()
+        return {'FINISHED'}
+"""
 
 import asyncio
 import traceback

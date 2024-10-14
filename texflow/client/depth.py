@@ -40,10 +40,12 @@ def ensure_scene():
 
     bpy.ops.object.delete()
 
+    return scene
+
 
 def render_depth_map(
-    obj=None,
-    camera=None,
+    obj: bpy.types.Object = None,
+    camera_obj: bpy.types.Object | None = None,
     height=512,
     width=512,
     extra_background_distance=0.0,
@@ -55,12 +57,13 @@ def render_depth_map(
     extra_background_distance: An extra distance to be added
       for the background behind the object
     """
-    scene = ensure_scene()
-    bpy.context.scene.collection.objects.link(obj)
+    original_scene = bpy.context.scene
+    temp_scene = ensure_scene()
+    temp_scene.collection.objects.link(obj)
 
-    if camera is None:
+    if camera_obj is None:
         bpy.ops.object.camera_add()
-        camera = bpy.context.active_object
+        camera_obj = bpy.context.active_object
         screen_areas = bpy.context.screen.areas
         view_3d_areas = [a for a in screen_areas if a.type == "VIEW_3D"]
         if len(view_3d_areas) != 1:
@@ -68,11 +71,14 @@ def render_depth_map(
                 f"Expecting a single view 3d area, but instead got {len(view_3d_areas)}!"
             )
         view_3d_space: bpy.types.SpaceView3D = view_3d_areas[0].spaces[0]
-        camera.data.lens = view_3d_space.lens
+        camera_obj.data.lens = view_3d_space.lens
         bpy.ops.view3d.camera_to_view()
 
-    bpy.context.scene.collection.objects.link(camera)
-    bpy.context.scene.camera = camera
+    else:
+        assert camera_obj.type == "CAMERA"
+        temp_scene.collection.objects.link(camera_obj)
+
+    bpy.context.scene.camera = camera_obj
 
     bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
     view_layer = bpy.context.scene.view_layers[0]
@@ -119,5 +125,8 @@ def render_depth_map(
     depth_image = (depth_image - min_value) / scale
     depth_image[~occupancy] = 1.0
     depth_image = depth_image.clamp_(0, 1)
+
+    bpy.context.window.scene = original_scene
+    bpy.data.scenes.remove(temp_scene)
 
     return depth_image, occupancy
