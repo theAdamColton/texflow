@@ -50,12 +50,27 @@ def render_depth_map(
 ):
     """
     obj: Object to be rendered
-    camera: Camera to use for rendering depth
+    camera: Camera to use for rendering depth, can be None in which case a
+        camera with the same fov as the viewport will be used
     extra_background_distance: An extra distance to be added
       for the background behind the object
     """
     scene = ensure_scene()
     bpy.context.scene.collection.objects.link(obj)
+
+    if camera is None:
+        bpy.ops.object.camera_add()
+        camera = bpy.context.active_object
+        screen_areas = bpy.context.screen.areas
+        view_3d_areas = [a for a in screen_areas if a.type == "VIEW_3D"]
+        if len(view_3d_areas) != 1:
+            raise ValueError(
+                f"Expecting a single view 3d area, but instead got {len(view_3d_areas)}!"
+            )
+        view_3d_space: bpy.types.SpaceView3D = view_3d_areas[0].spaces[0]
+        camera.data.lens = view_3d_space.lens
+        bpy.ops.view3d.camera_to_view()
+
     bpy.context.scene.collection.objects.link(camera)
     bpy.context.scene.camera = camera
 

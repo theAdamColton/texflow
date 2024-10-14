@@ -25,7 +25,7 @@ class TestClient(TestCase):
         self.assertEqual((height, width), depth_map.shape)
 
         # the middle pixel should not be max distance
-        self.assertLess(depth_map[height // 2, width // 2], 1.0)
+        self.assertLess(depth_map[height // 2, width // 2].item(), 1.0)
 
     def test_render_depth_map_w_extra_distance(self):
         bpy.ops.mesh.primitive_ico_sphere_add()
