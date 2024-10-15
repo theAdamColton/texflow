@@ -2,7 +2,12 @@ import bpy
 
 from ..state import TexflowState
 from ..utils import DESCRIPTION, VERSION_TUPLE
-from .ui import TexflowProperties, TexflowPanel, TEXFLOW_OT_Generate
+from .ui import (
+    TexflowProperties,
+    TexflowPanel,
+    StartGenerationOperator,
+    StopGenerationOperator,
+)
 from .async_loop import AsyncLoopModalOperator
 
 
@@ -16,7 +21,13 @@ bl_info = {
     "category": "Paint",
 }
 
-classes = (TexflowPanel, TEXFLOW_OT_Generate, TexflowProperties, AsyncLoopModalOperator)
+classes = (
+    TexflowPanel,
+    StartGenerationOperator,
+    StopGenerationOperator,
+    TexflowProperties,
+    AsyncLoopModalOperator,
+)
 
 
 def register():

@@ -66,10 +66,12 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
 
 
-class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
+class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "TEXFLOW_OT_Generate"
     bl_idname = "texflow.generate"
     bl_description = "Generate a texture"
+
+    stop_upon_exception = True
 
     @classmethod
     def poll(cls, context: bpy.types.Context | None):
@@ -82,9 +84,12 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
 
     async def update_ui(self, step):
         bpy.context.scene.texflow.current_step = step
+        should_stop = not bpy.context.scene.texflow.is_running
+        return should_stop
 
     async def async_execute(self, context):
         texflow = context.scene.texflow
+        texflow.is_running = True
 
         height = texflow.height
         width = texflow.width
@@ -95,10 +100,16 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
         loop = asyncio.get_event_loop()
 
         def callback_on_step_end(pipe, step, timestep, callback_kwargs):
-            loop.run_until_complete(self.update_ui(step))
+            should_stop = loop.run_until_complete(self.update_ui(step))
+
+            if should_stop:
+                pipe._interrupt = True
+                # Not all pipes implement _interrupt,
+                # So we just quit
+                raise Exception("Diffusion pipe interrupted")
+
             return callback_kwargs
 
-        texflow.is_running = True
         obj = context.active_object
         depth_map, depth_occupancy = render_depth_map(
             obj=obj,
@@ -134,6 +145,11 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
             seed=texflow.seed,
             callback_on_step_end=callback_on_step_end,
         )
+
+        should_stop = not texflow.is_running
+        if should_stop:
+            self.quit()
+            return
 
         clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
         base_name = f"texflow{clean_prompt}"
@@ -191,6 +207,16 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
         self.quit()
 
 
+class StopGenerationOperator(bpy.types.Operator):
+    bl_label = "TEXFLOW_OT_Interrupt"
+    bl_idname = "texflow.interrupt"
+    bl_description = "Stop generation"
+
+    def execute(self, context):
+        context.scene.texflow.is_running = False
+        return {"FINISHED"}
+
+
 class TexflowPanel(bpy.types.Panel):
     bl_label = "texflow"
     bl_idname = f"TEXFLOW_PT_texflow_panel_IMAGE_EDITOR"
@@ -205,8 +231,16 @@ class TexflowPanel(bpy.types.Panel):
         is_running = texflow.is_running
 
         layout.prop_search(texflow, "camera", bpy.data, "objects")
+        layout.prop()
+
+        row = layout.row()
+        row.enabled = not is_running
+        row.operator(StartGenerationOperator.bl_idname)
+
         row = layout.row()
         row.progress(
             text=f"{texflow.current_step}/{texflow.steps}",
             factor=texflow.current_step / texflow.steps,
         )
+        row.operator(StopGenerationOperator.bl_idname, text="Interrupt")
+        row.enabled = is_running
