@@ -65,8 +65,8 @@ class TestClient(TestCase):
     def test_generate(self):
         state = get_texflow_state()
         pipe = load_pipe(
-            "hf-internal-testing/tiny-stable-diffusion-pipe",
-            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
+            "stabilityai/stable-diffusion-2-1",
+            controlnet_models_or_paths=["thibaud/controlnet-sd21-depth-diffusers"],
         )
         state.pipe = pipe
         texflow_props = bpy.context.scene.texflow
@@ -78,6 +78,10 @@ class TestClient(TestCase):
         texflow_props.camera = camera
 
         bpy.ops.mesh.primitive_ico_sphere_add()
+        obj = bpy.context.active_object
+        select_obj(obj)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
         bpy.ops.texflow.generate()
 
         i = 0

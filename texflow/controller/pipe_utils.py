@@ -1,4 +1,5 @@
 import inspect
+from accelerate import infer_auto_device_map, init_empty_weights
 import torch
 from diffusers import ControlNetModel
 from diffusers.pipelines.auto_pipeline import (
@@ -8,7 +9,7 @@ from diffusers.pipelines.auto_pipeline import (
 )
 
 
-def get_best_device_and_dtype():
+def _get_best_device_and_dtype():
     # Check if CUDA is available
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -38,29 +39,44 @@ def _post_pipe_init(pipe):
     return pipe
 
 
+def _init_model(cls, *args, force_cpu=False, dtype_override=None, **kwargs):
+    # TODO avoid double copy to device
+    device, dtype = _get_best_device_and_dtype()
+    if force_cpu:
+        device = "cpu"
+        dtype = torch.float32
+    if dtype_override is not None:
+        dtype = dtype_override
+
+    model = cls(*args, **kwargs, torch_dtype=dtype).to(device=device, dtype=dtype)
+    return model
+
+
 def load_pipe(
     pretrained_model_or_path,
     controlnet_models_or_paths: list | None = None,
     token=None,
     dtype_override=None,
+    force_cpu=False,
 ):
-    kwargs = {}
-    _, dtype = get_best_device_and_dtype()
-    if dtype_override is not None:
-        dtype = dtype_override
-    kwargs["torch_dtype"] = dtype
+    pipe_kwargs = {}
 
     if controlnet_models_or_paths is not None:
         controlnets = [
-            ControlNetModel.from_pretrained(path, torch_dtype=dtype)
+            _init_model(ControlNetModel.from_pretrained, path)
             for path in controlnet_models_or_paths
         ]
-        kwargs["controlnet"] = controlnets
+        pipe_kwargs["controlnet"] = controlnets
 
     if token is not None:
-        kwargs["token"] = token
+        pipe_kwargs["token"] = token
 
-    pipe = AutoPipelineForText2Image.from_pretrained(pretrained_model_or_path, **kwargs)
+    pipe = _init_model(
+        AutoPipelineForText2Image.from_pretrained,
+        pretrained_model_or_path,
+        force_cpu=force_cpu,
+        dtype_override=dtype_override,
+    )
     pipe = _post_pipe_init(pipe)
     return pipe
 

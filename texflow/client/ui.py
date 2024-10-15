@@ -2,6 +2,7 @@ import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
 
+from texflow.client.uv import uv_proj
 from texflow.state import TexflowState
 
 from .async_loop import AsyncModalOperatorMixin
@@ -69,7 +70,7 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_idname = "texflow.generate"
     bl_description = "Generate a texture"
 
-    def update_ui(self, step):
+    async def update_ui(self, step):
         print("UPDATE CURRENT STEP", step)
         bpy.context.state.texflow.current_step = step
 
@@ -77,9 +78,11 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
         print("STARTING GENERATION")
         texflow = context.scene.texflow
 
+        loop = asyncio.get_event_loop()
+
         def callback_on_step_end(pipe, step, timestep, callback_kwargs):
-            texflow.current_step = step
-            asyncio.run_coroutine_threadsafe(self.update_ui, asyncio.get_event_loop())
+            asyncio.run_coroutine_threadsafe(self.update_ui(step), loop)
+            return callback_kwargs
 
         texflow.is_running = True
         """
@@ -91,8 +94,15 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
             width=texflow.width,
         )
         """
+        obj = context.active_object
         depth_map, depth_occupancy = render_depth_map(
-            obj=context.active_object,
+            obj=obj,
+            camera_obj=texflow.camera,
+            height=texflow.height,
+            width=texflow.width,
+        )
+        uv_layer = uv_proj(
+            obj=obj,
             camera_obj=texflow.camera,
             height=texflow.height,
             width=texflow.width,
@@ -117,6 +127,7 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
         )
         texflow.is_running = False
         print("GENERATED IMAGE", generated_image)
+
         self.quit()
 
 
