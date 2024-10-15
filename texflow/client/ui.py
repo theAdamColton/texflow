@@ -129,8 +129,9 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
         )
 
         clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
+        base_name = f"texflow{clean_prompt}"
         blender_image = bpy.data.images.new(
-            f"texflowTexture{clean_prompt}",
+            f"{base_name}_Texture",
             width=width,
             height=height,
             alpha=False,
@@ -143,7 +144,38 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
             ),
             axis=-1,
         )
-        blender_image.pixels = generated_image.ravel()
+        blender_image.pixels.foreach_set(generated_image.flatten())
+
+        material = bpy.data.materials.new(name=f"{base_name}_Material")
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+        links = material.node_tree.links
+        for node in nodes:
+            nodes.remove(node)
+
+        output_node = nodes.new(type="ShaderNodeOutputMaterial")
+        output_node.location = (300, 0)
+        bsdf_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+        bsdf_node.location = (0, 0)
+        bsdf_node.inputs["Metallic"].default_value = 0.0
+        bsdf_node.inputs["Roughness"].default_value = 1.0
+        diffuse_map_node = nodes.new(type="ShaderNodeTexImage")
+        diffuse_map_node.location = (-600, 300)
+        diffuse_map_node.image = blender_image
+        uv_map_node = nodes.new(type="ShaderNodeUVMap")
+        uv_map_node.location = (-800, 500)
+        uv_map_node.uv_map = uv_layer.name
+
+        links.new(uv_map_node.outputs["UV"], diffuse_map_node.inputs["Vector"])
+        links.new(diffuse_map_node.outputs["Color"], bsdf_node.inputs["Base Color"])
+        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
+
+        obj.data.materials.append(material)
+        material_index = obj.data.materials.find(material.name)
+        mesh = obj.data
+        for p in mesh.polygons:
+            if p.select:
+                p.material_index = material_index
 
         print("GENERATED IMAGE TO", blender_image.name)
 
