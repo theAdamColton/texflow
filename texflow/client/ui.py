@@ -1,3 +1,5 @@
+import numpy as np
+import copy
 import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
@@ -71,62 +73,81 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_description = "Generate a texture"
 
     async def update_ui(self, step):
-        print("UPDATE CURRENT STEP", step)
-        bpy.context.state.texflow.current_step = step
+        bpy.context.scene.texflow.current_step = step
 
     async def async_execute(self, context):
         print("STARTING GENERATION")
         texflow = context.scene.texflow
 
+        height = texflow.height
+        width = texflow.width
+        camera = texflow.camera
+        obj = context.active_object
+        prompt = texflow.prompt
+
         loop = asyncio.get_event_loop()
 
         def callback_on_step_end(pipe, step, timestep, callback_kwargs):
-            asyncio.run_coroutine_threadsafe(self.update_ui(step), loop)
+            loop.run_until_complete(self.update_ui(step))
             return callback_kwargs
 
         texflow.is_running = True
-        """
-        depth_map = await asyncio.to_thread(
-            render_depth_map,
-            obj=context.active_object,
-            camera=texflow.camera,
-            height=texflow.height,
-            width=texflow.width,
-        )
-        """
         obj = context.active_object
         depth_map, depth_occupancy = render_depth_map(
             obj=obj,
-            camera_obj=texflow.camera,
-            height=texflow.height,
-            width=texflow.width,
+            camera_obj=camera,
+            height=height,
+            width=width,
         )
         uv_layer = uv_proj(
             obj=obj,
-            camera_obj=texflow.camera,
-            height=texflow.height,
-            width=texflow.width,
+            camera_obj=camera,
+            height=height,
+            width=width,
         )
 
         pipe = get_texflow_state().pipe
 
+        # controlnet uses an inverted depth map with 3 color channels
+        depth_map = 1 - depth_map
+        depth_map = depth_map.unsqueeze(0).repeat(3, 1, 1)
+
         generated_image = await asyncio.to_thread(
             run_pipe,
             pipe=pipe,
-            prompt=texflow.prompt,
+            prompt=prompt,
             negative_prompt=texflow.negative_prompt,
             controlnet_conditioning_scales=[texflow.controlnet_conditioning_scale],
             image2image_strength=texflow.image2image_strength,
             control_images=[depth_map.unsqueeze(0)],
-            height=texflow.height,
-            width=texflow.width,
+            height=height,
+            width=width,
             num_inference_steps=texflow.steps,
             guidance_scale=texflow.cfg_scale,
             seed=texflow.seed,
             callback_on_step_end=callback_on_step_end,
         )
+
+        clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
+        blender_image = bpy.data.images.new(
+            f"texflowTexture{clean_prompt}",
+            width=width,
+            height=height,
+            alpha=False,
+        )
+        # need to add an alpha channel for converting to blender
+        generated_image = np.concatenate(
+            (
+                generated_image,
+                np.zeros((height, width, 1), dtype=generated_image.dtype),
+            ),
+            axis=-1,
+        )
+        blender_image.pixels = generated_image.ravel()
+
+        print("GENERATED IMAGE TO", blender_image.name)
+
         texflow.is_running = False
-        print("GENERATED IMAGE", generated_image)
 
         self.quit()
 

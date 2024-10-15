@@ -76,6 +76,7 @@ def load_pipe(
         pretrained_model_or_path,
         force_cpu=force_cpu,
         dtype_override=dtype_override,
+        **pipe_kwargs,
     )
     pipe = _post_pipe_init(pipe)
     return pipe
@@ -129,6 +130,7 @@ def run_pipe(
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         callback_on_step_end=callback_on_step_end,
+        output_type="np",
     )
 
     if does_pipe_accept_negative_prompt(pipe):
@@ -165,4 +167,5 @@ def run_pipe(
     if seed is not None:
         kwargs["generator"] = torch.Generator(pipe.device).manual_seed(int(seed))
 
-    return pipe(**kwargs)
+    output = pipe(**kwargs)
+    return output["images"][0]

@@ -88,6 +88,10 @@ class TestClient(TestCase):
         stop = False
         while not stop:
             stop = kick_async_loop()
-            print(i, texflow_props.current_step)
+            print(
+                i,
+                bpy.context.scene.texflow.current_step,
+                bpy.context.scene.texflow.is_running,
+            )
             time.sleep(0.1)
             i += 1

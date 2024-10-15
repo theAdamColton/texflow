@@ -1,5 +1,5 @@
+import numpy as np
 import inspect
-from PIL import Image
 import torch
 import unittest
 
@@ -7,14 +7,19 @@ from ..controller.pipe_utils import load_pipe, run_pipe, set_pipe_type
 
 
 class TestPipe(unittest.TestCase):
+    def _check_image(self, image):
+        h, w, c = image.shape
+        self.assertIsInstance(image, np.ndarray)
+
     def test_load_pipe_stable_diffusion(self):
         pipe = load_pipe(
             "hf-internal-testing/tiny-stable-diffusion-pipe",
             dtype_override=torch.float32,
         )
-        output = pipe(prompt="a prompt about dogs", num_inference_steps=2)
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        image = pipe(
+            prompt="a prompt about dogs", num_inference_steps=2, output_type="np"
+        )["images"][0]
+        self._check_image(image)
 
     def assertInSignature(self, key, function):
         self.assertIn(key, inspect.signature(function).parameters.keys())
@@ -107,8 +112,7 @@ class TestPipe(unittest.TestCase):
             height=64,
             width=64,
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
 
     def _test_controlnet_image2image(self, base_name, controlnet_name):
         pipe = load_pipe(
@@ -128,8 +132,7 @@ class TestPipe(unittest.TestCase):
             height=64,
             width=64,
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
 
     def _test_controlnet_text2image(self, base_name, controlnet_name):
         pipe = load_pipe(
@@ -146,8 +149,7 @@ class TestPipe(unittest.TestCase):
             height=64,
             width=64,
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
 
     def _test_inpainting(self, name):
         pipe = load_pipe(
@@ -166,8 +168,7 @@ class TestPipe(unittest.TestCase):
             height=64,
             width=64,
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
 
     def _test_image2image(self, name):
         pipe = load_pipe(
@@ -184,8 +185,7 @@ class TestPipe(unittest.TestCase):
             height=64,
             width=64,
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
 
     def _test_text2image(self, name):
         pipe = load_pipe(
@@ -195,5 +195,4 @@ class TestPipe(unittest.TestCase):
         output = run_pipe(
             pipe, prompt="rabbit", num_inference_steps=2, height=64, width=64
         )
-        image = output["images"][0]
-        self.assertIsInstance(image, Image.Image)
+        self._check_image(output)
