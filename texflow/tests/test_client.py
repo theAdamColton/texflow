@@ -65,13 +65,15 @@ class TestClient(TestCase):
     def test_generate(self):
         state = get_texflow_state()
         pipe = load_pipe(
-            "stabilityai/stable-diffusion-2-1",
-            controlnet_models_or_paths=["thibaud/controlnet-sd21-depth-diffusers"],
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
         )
         state.pipe = pipe
         texflow_props = bpy.context.scene.texflow
-        texflow_props.height = 64
-        texflow_props.width = 64
+        height = 64
+        width = 64
+        texflow_props.height = height
+        texflow_props.width = width
         texflow_props.steps = 4
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
         camera = bpy.context.active_object
@@ -84,6 +86,7 @@ class TestClient(TestCase):
         bpy.ops.mesh.select_all(action="SELECT")
         bpy.ops.texflow.generate()
 
+        limit = 100
         i = 0
         stop = False
         while not stop:
@@ -95,3 +98,13 @@ class TestClient(TestCase):
             )
             time.sleep(0.1)
             i += 1
+            self.assertLess(i, limit)
+
+        new_material = obj.data.materials[-1]
+        diffuse_node = next(
+            node for node in new_material.node_tree.nodes if node.type == "TEX_IMAGE"
+        )
+        generated_image = diffuse_node.image
+
+        self.assertEqual((height, width), tuple(generated_image.size))
+        self.assertFalse(texflow_props.is_running)

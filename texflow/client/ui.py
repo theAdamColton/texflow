@@ -1,5 +1,4 @@
 import numpy as np
-import copy
 import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
@@ -72,11 +71,19 @@ class TEXFLOW_OT_Generate(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_idname = "texflow.generate"
     bl_description = "Generate a texture"
 
+    @classmethod
+    def poll(cls, context: bpy.types.Context | None):
+        return (
+            context is not None
+            and context.mode == "EDIT_MESH"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+        )
+
     async def update_ui(self, step):
         bpy.context.scene.texflow.current_step = step
 
     async def async_execute(self, context):
-        print("STARTING GENERATION")
         texflow = context.scene.texflow
 
         height = texflow.height
