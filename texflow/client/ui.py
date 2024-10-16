@@ -1,3 +1,4 @@
+import traceback
 import numpy as np
 import asyncio
 import bpy
@@ -7,7 +8,7 @@ from texflow.client.uv import uv_proj
 from texflow.state import TexflowState
 
 from .async_loop import AsyncModalOperatorMixin
-from ..controller.pipe_utils import run_pipe
+from ..controller.pipe_utils import load_pipe, run_pipe
 from .depth import render_depth_map
 
 
@@ -203,6 +204,51 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         print("GENERATED IMAGE TO", blender_image.name)
 
         texflow.is_running = False
+
+        self.quit()
+
+
+class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
+    bl_label = "TEXFLOW_OT_LoadModel"
+    bl_idname = "texflow.load_model"
+    bl_description = "Load a model from huggingface"
+
+    model_path: bpy.props.StringProperty(
+        name="Model Path",
+        description="URL of pretrained model hosted inside a model repo on huggingface.co",
+        default="",
+    )
+    controlnet_model_path: bpy.props.StringProperty(
+        name="Model Path",
+        description="URL of a pretrained controlnet model hosted inside a model repo on huggingface.co",
+        default="",
+    )
+    token: bpy.props.StringProperty(
+        name="Token",
+        description="Your private huggingface API token",
+        default="",
+    )
+
+    async def async_execute(self, context):
+        context.scene.texflow.is_running = False
+        try:
+            pipe = await asyncio.to_thread(
+                load_pipe(
+                    pretrained_model_or_path=self.model_path,
+                    controlnet_models_or_paths=[self.controlnet_model_path],
+                    token=self.token,
+                )
+            )
+        except Exception as e:
+            print(traceback.format_exception(e))
+            self.report({"ERROR"}, traceback.format_exception(e)[0])
+            self.quit()
+            return
+
+        print("Loaded Pipe")
+
+        state = get_texflow_state()
+        state.pipe = pipe
 
         self.quit()
 
