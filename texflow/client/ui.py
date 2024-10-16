@@ -4,9 +4,8 @@ import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
 
-from texflow.client.uv import uv_proj
-from texflow.state import TexflowState
-
+from .uv import uv_proj
+from ..state import TexflowState
 from .async_loop import AsyncModalOperatorMixin
 from ..controller.pipe_utils import load_pipe, run_pipe
 from .depth import render_depth_map

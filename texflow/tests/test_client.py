@@ -1,13 +1,13 @@
 import time
 import bpy
 
-from texflow.client.depth import render_depth_map
-from texflow.client.async_loop import kick_async_loop
-from texflow.client.utils import select_obj
-from texflow.client.ui import get_texflow_state
-from texflow.client import register, unregister
-from texflow.tests.utils import TestCase, save_image
-from texflow.controller.pipe_utils import load_pipe
+from ..client.depth import render_depth_map
+from ..client.async_loop import kick_async_loop
+from ..client.utils import select_obj
+from ..client.ui import get_texflow_state
+from ..client import register, unregister
+from ..tests.utils import TestCase, save_image
+from ..controller.pipe_utils import load_pipe
 
 
 class TestClient(TestCase):

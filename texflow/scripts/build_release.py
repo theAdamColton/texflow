@@ -4,7 +4,7 @@ import os
 import subprocess
 import shutil
 
-from texflow.utils import (
+from ..utils import (
     PYTHON_VERSION,
     ROOT_PATH,
     VERSION_STRING,
@@ -26,6 +26,8 @@ if __name__ == "__main__":
         build_dir / src_root.name,
         ignore=shutil.ignore_patterns("__pycache__", "*.egg-info", "tests"),
     )
+
+    shutil.copyfile(ROOT_PATH / "pyproject.toml", build_dir / "pyproject.toml")
 
     # Move client/__init__.py to the root of the build directory
     init_file = build_dir / src_root.name / "client" / "__init__.py"

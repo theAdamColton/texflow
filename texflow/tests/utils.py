@@ -3,7 +3,7 @@ import inspect
 import unittest
 from PIL import Image
 
-from texflow.utils import ROOT_PATH
+from ..utils import ROOT_PATH
 
 
 def save_image(image: torch.Tensor, path):
