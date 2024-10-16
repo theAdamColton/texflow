@@ -96,17 +96,13 @@ class TestClient(TestCase):
         stop = False
         while not stop:
             stop = kick_async_loop()
-            print(
-                i,
-                bpy.context.scene.texflow.current_step,
-                bpy.context.scene.texflow.is_running,
-            )
+            print(i, get_texflow_state().current_step)
             time.sleep(0.1)
             i += 1
             self.assertLess(i, limit)
 
         self.assertEqual(len(obj.data.materials), 0)
-        self.assertFalse(texflow_props.is_running)
+        self.assertFalse(get_texflow_state().is_running)
 
     def test_generate(self):
         state = get_texflow_state()
@@ -137,11 +133,7 @@ class TestClient(TestCase):
         stop = False
         while not stop:
             stop = kick_async_loop()
-            print(
-                i,
-                bpy.context.scene.texflow.current_step,
-                bpy.context.scene.texflow.is_running,
-            )
+            print(i, get_texflow_state().current_step)
             time.sleep(0.1)
             i += 1
             self.assertLess(i, limit)
@@ -153,4 +145,25 @@ class TestClient(TestCase):
         generated_image = diffuse_node.image
 
         self.assertEqual((height, width), tuple(generated_image.size))
-        self.assertFalse(texflow_props.is_running)
+        self.assertFalse(get_texflow_state().is_running)
+
+    def test_load_model(self):
+        bpy.context.scene.texflow.model_path = (
+            "hf-internal-testing/tiny-stable-diffusion-pipe"
+        )
+        bpy.context.scene.texflow.controlnet_model_path = (
+            "hf-internal-testing/tiny-controlnet"
+        )
+        bpy.ops.texflow.load_model()
+        timeout = 10
+        st = time.time()
+        while True:
+            kick_async_loop()
+            state = get_texflow_state()
+            if state.pipe is not None:
+                break
+            duration = time.time() - st
+            self.assertLess(duration, timeout)
+            time.sleep(0.1)
+
+        self.assertIsNotNone(state.pipe)

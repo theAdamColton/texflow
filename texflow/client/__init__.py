@@ -3,6 +3,7 @@ import bpy
 from ..state import TexflowState
 from ..utils import DESCRIPTION, VERSION_TUPLE
 from .ui import (
+    LoadModelOperator,
     TexflowProperties,
     TexflowPanel,
     StartGenerationOperator,
@@ -27,6 +28,7 @@ classes = (
     StopGenerationOperator,
     TexflowProperties,
     AsyncLoopModalOperator,
+    LoadModelOperator,
 )
 
 

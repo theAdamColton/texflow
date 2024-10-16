@@ -4,6 +4,7 @@ import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
 
+from .utils import select_obj
 from .uv import uv_proj
 from ..state import TexflowState
 from .async_loop import AsyncModalOperatorMixin
@@ -27,6 +28,22 @@ def ui_update(_, context):
 
 
 class TexflowProperties(bpy.types.PropertyGroup):
+    model_path: bpy.props.StringProperty(
+        name="Base model path",
+        description="URL of pretrained model hosted inside a model repo on huggingface.co",
+        default="",
+    )
+    controlnet_model_path: bpy.props.StringProperty(
+        name="Controlnet Path",
+        description="URL of a pretrained controlnet model hosted inside a model repo on huggingface.co",
+        default="",
+    )
+    token: bpy.props.StringProperty(
+        name="Huggingface Token",
+        description="Your private huggingface API token",
+        default="",
+    )
+
     prompt: bpy.props.StringProperty(name="Prompt")
     negative_prompt: StringProperty(
         name="Negative Prompt",
@@ -39,8 +56,6 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
     seed: StringProperty(name="Seed", default="0", description="Manually pick a seed")
     steps: IntProperty(name="Steps", default=25, min=1)
-    is_running: BoolProperty(default=False)
-    current_step: IntProperty(default=0, update=ui_update)
     camera: bpy.props.PointerProperty(
         name="Camera",
         type=bpy.types.Object,
@@ -67,7 +82,7 @@ class TexflowProperties(bpy.types.PropertyGroup):
 
 
 class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
-    bl_label = "TEXFLOW_OT_Generate"
+    bl_label = "Generate"
     bl_idname = "texflow.generate"
     bl_description = "Generate a texture"
 
@@ -83,13 +98,14 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         )
 
     async def update_ui(self, step):
-        bpy.context.scene.texflow.current_step = step
-        should_stop = not bpy.context.scene.texflow.is_running
+        texflow_state = get_texflow_state()
+        texflow_state.current_step = step
+        should_stop = not texflow_state.is_running
         return should_stop
 
     async def async_execute(self, context):
         texflow = context.scene.texflow
-        texflow.is_running = True
+        get_texflow_state().is_running = True
 
         height = texflow.height
         width = texflow.width
@@ -111,12 +127,15 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             return callback_kwargs
 
         obj = context.active_object
+        bpy.ops.object.mode_set(mode="OBJECT")
         depth_map, depth_occupancy = render_depth_map(
             obj=obj,
             camera_obj=camera,
             height=height,
             width=width,
         )
+        select_obj(obj)
+        bpy.ops.object.mode_set(mode="EDIT")
         uv_layer = uv_proj(
             obj=obj,
             camera_obj=camera,
@@ -146,7 +165,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             callback_on_step_end=callback_on_step_end,
         )
 
-        should_stop = not texflow.is_running
+        should_stop = not get_texflow_state().is_running
         if should_stop:
             self.quit()
             return
@@ -202,45 +221,33 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         print("GENERATED IMAGE TO", blender_image.name)
 
-        texflow.is_running = False
+        get_texflow_state().is_running = False
 
         self.quit()
 
 
 class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
-    bl_label = "TEXFLOW_OT_LoadModel"
+    bl_label = "Load model"
     bl_idname = "texflow.load_model"
     bl_description = "Load a model from huggingface"
 
-    model_path: bpy.props.StringProperty(
-        name="Model Path",
-        description="URL of pretrained model hosted inside a model repo on huggingface.co",
-        default="",
-    )
-    controlnet_model_path: bpy.props.StringProperty(
-        name="Model Path",
-        description="URL of a pretrained controlnet model hosted inside a model repo on huggingface.co",
-        default="",
-    )
-    token: bpy.props.StringProperty(
-        name="Token",
-        description="Your private huggingface API token",
-        default="",
-    )
+    @classmethod
+    def poll(cls, context):
+        texflow = context.scene.texflow
+        return texflow.model_path != ""
 
     async def async_execute(self, context):
-        context.scene.texflow.is_running = False
+        texflow = context.scene.texflow
         try:
             pipe = await asyncio.to_thread(
-                load_pipe(
-                    pretrained_model_or_path=self.model_path,
-                    controlnet_models_or_paths=[self.controlnet_model_path],
-                    token=self.token,
-                )
+                load_pipe,
+                pretrained_model_or_path=texflow.model_path,
+                controlnet_models_or_paths=[texflow.controlnet_model_path],
+                token=texflow.token if texflow.token != "" else None,
             )
         except Exception as e:
-            print(traceback.format_exception(e))
-            self.report({"ERROR"}, traceback.format_exception(e)[0])
+            traceback.print_exception(e)
+            self.report({"ERROR"}, str(e))
             self.quit()
             return
 
@@ -249,16 +256,18 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         state = get_texflow_state()
         state.pipe = pipe
 
+        ui_update(None, context)
+
         self.quit()
 
 
 class StopGenerationOperator(bpy.types.Operator):
-    bl_label = "TEXFLOW_OT_Interrupt"
+    bl_label = "Interrupt"
     bl_idname = "texflow.interrupt"
     bl_description = "Stop generation"
 
     def execute(self, context):
-        context.scene.texflow.is_running = False
+        get_texflow_state().is_running = False
         return {"FINISHED"}
 
 
@@ -266,26 +275,42 @@ class TexflowPanel(bpy.types.Panel):
     bl_label = "texflow"
     bl_idname = f"TEXFLOW_PT_texflow_panel_IMAGE_EDITOR"
     bl_category = "texflow"
-    bl_space_type = "IMAGE_EDITOR"
+    bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
 
     def draw(self, context):
         layout = self.layout
+        texflow_state = get_texflow_state()
         texflow = context.scene.texflow
 
-        is_running = texflow.is_running
+        is_running = texflow_state.is_running
+        pipe = texflow_state.pipe
+        model_loaded = pipe is not None
 
-        layout.prop_search(texflow, "camera", bpy.data, "objects")
-        layout.prop()
+        layout.prop_search(
+            texflow, "camera", bpy.data, "objects", text="Camera (Optional)"
+        )
+        layout.label(text="Base Model Path:")
+        layout.prop(texflow, "model_path", text="")
+        layout.label(text="ControlNet Model path (Optional):")
+        layout.prop(texflow, "controlnet_model_path", text="")
+        layout.label(text="HuggingFace token (Optional):")
+        layout.prop(texflow, "token", text="")
+        layout.operator(LoadModelOperator.bl_idname)
+
+        if model_loaded:
+            layout.label(text=f"Model loaded: {pipe.name_or_path}")
+        else:
+            layout.label(text=f"No model loaded.")
 
         row = layout.row()
-        row.enabled = not is_running
+        row.enabled = (not is_running) and model_loaded
         row.operator(StartGenerationOperator.bl_idname)
 
         row = layout.row()
         row.progress(
-            text=f"{texflow.current_step}/{texflow.steps}",
-            factor=texflow.current_step / texflow.steps,
+            text=f"{texflow_state.current_step}/{texflow.steps}",
+            factor=texflow_state.current_step / texflow.steps,
         )
         row.operator(StopGenerationOperator.bl_idname, text="Interrupt")
         row.enabled = is_running
