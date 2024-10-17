@@ -112,20 +112,23 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             and context.active_object.type == "MESH"
         )
 
-    async def update_ui(self, step):
-        texflow_state = get_texflow_state()
-        texflow_state.current_step = step
-
     async def async_execute(self, context):
-        texflow = context.scene.texflow
         texflow_state = get_texflow_state()
-
         if texflow_state.status != "PENDING":
             raise ValueError(
                 f"Can't start generation when texflow_status is {texflow_state.status}!"
             )
 
         get_texflow_state().status = "RUNNING"
+        try:
+            await self._generate(context)
+        finally:
+            get_texflow_state().status = "PENDING"
+            self.quit()
+
+    async def _generate(self, context):
+        texflow = context.scene.texflow
+        texflow_state = get_texflow_state()
 
         height = texflow.height
         width = texflow.width
@@ -139,8 +142,14 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         loop = asyncio.get_event_loop()
 
+        async def _update_ui_main_thread(step):
+            get_texflow_state().current_step = step
+            ui_update(None, bpy.context)
+
         def callback_on_step_end(_, step, timestep, callback_kwargs):
-            loop.call_soon_threadsafe(self.update_ui(step))
+            asyncio.run_coroutine_threadsafe(
+                asyncio.to_thread(_update_ui_main_thread, step), loop
+            )
             return callback_kwargs
 
         obj = context.active_object
@@ -166,7 +175,6 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         generated_image = await asyncio.to_thread(
             run_pipe,
-            # generated_image = run_pipe(
             pipe=pipe,
             prompt=prompt,
             negative_prompt=texflow.negative_prompt,
@@ -178,7 +186,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             num_inference_steps=texflow.steps,
             guidance_scale=texflow.cfg_scale,
             seed=texflow.seed,
-            # callback_on_step_end=callback_on_step_end,
+            callback_on_step_end=callback_on_step_end,
         )
 
         clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
@@ -237,8 +245,6 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         get_texflow_state().status = "PENDING"
 
-        self.quit()
-
 
 class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "Load model"
@@ -252,16 +258,22 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         return texflow.current_model_path.model_path != ""
 
     async def async_execute(self, context):
-        texflow = context.scene.texflow
-        get_texflow_state().pipe = None
-
-        texflow_status = get_texflow_state().status
-        if texflow_status != "PENDING":
+        texflow_state = get_texflow_state()
+        if texflow_state.status != "PENDING":
             raise ValueError(
-                f"Can't load model when texflow_status is {texflow_status}"
+                f"Can't load a model when texflow_status is {texflow_state.status}!"
             )
 
         get_texflow_state().status = "LOADING"
+        try:
+            await self._load_model(context)
+        finally:
+            get_texflow_state().status = "PENDING"
+            self.quit()
+
+    async def _load_model(self, context):
+        texflow = context.scene.texflow
+        get_texflow_state().pipe = None
 
         model_path = texflow.current_model_path.model_path
         controlnet_model_path = texflow.current_model_path.controlnet_model_path
@@ -289,9 +301,9 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
                 tqdm_callback=tqdm_callback,
             )
         except Exception as e:
+            get_texflow_state().status = "PENDING"
             traceback.print_exception(e)
             self.report({"ERROR"}, str(e))
-            self.quit()
             return
 
         get_texflow_state().load_step = get_texflow_state().load_max_step
@@ -320,8 +332,6 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         ui_update(None, context)
 
         get_texflow_state().status = "PENDING"
-
-        self.quit()
 
 
 class StopGenerationOperator(bpy.types.Operator):

@@ -49,9 +49,10 @@ def _hook_tqdm(callback=None):
 
     def update(self: tqdm, n=1):
         displayed = og_update(self, n)
-        print(f"CUSTOM TQDM UPDATE BY {n} {self.n}/{self.total}")
-        if callback is not None:
-            callback(self.n, self.total)
+        if displayed:
+            print(f"CUSTOM TQDM UPDATE BY {n} {self.n}/{self.total}")
+            if callback is not None:
+                callback(self.n, self.total)
         return displayed
 
     tqdm.update = update
@@ -74,7 +75,7 @@ def _init_model(
         dtype = dtype_override
 
     with _hook_tqdm(tqdm_callback):
-        model = cls(*args, **kwargs, torch_dtype=dtype).to(device=device, dtype=dtype)
+        model = cls(*args, **kwargs, torch_dtype=dtype).to(device=device)
     return model
 
 
@@ -88,10 +89,26 @@ def load_pipe(
 ):
     pipe_kwargs = {}
 
+    # import bpdb
+
+    # bpdb.set_trace()
+
+    # TODO fix this HACK
+    # you can't load the flux controlnet pipeline using
+    # the ControlNetModel class, instead you have to use
+    # the custom flux controlnet
+    is_flux = "flux" in pretrained_model_or_path.lower()
+
     if controlnet_models_or_paths is not None:
+        controlnet_cls = ControlNetModel
+        if is_flux:
+            from diffusers.models.controlnet_flux import FluxControlNetModel
+
+            controlnet_cls = FluxControlNetModel
+
         controlnets = [
             _init_model(
-                ControlNetModel.from_pretrained, path, tqdm_callback=tqdm_callback
+                controlnet_cls.from_pretrained, path, tqdm_callback=tqdm_callback
             )
             for path in controlnet_models_or_paths
         ]
@@ -172,10 +189,12 @@ def run_pipe(
             control_guidance_start=control_guidance_start,
             control_guidance_end=control_guidance_end,
         )
-        if is_img2img or is_inpainting:
-            controlnet_kwargs["control_image"] = control_images
-        else:
-            controlnet_kwargs["image"] = control_images
+
+        # This hack should work in most cases
+        control_image_kw = "control_image"
+        if not control_image_kw in inspect.signature(pipe).parameters.keys():
+            control_image_kw = "image"
+        controlnet_kwargs[control_image_kw] = control_images
 
         kwargs.update(controlnet_kwargs)
 

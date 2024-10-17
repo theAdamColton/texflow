@@ -1,3 +1,4 @@
+import huggingface_hub
 import numpy as np
 import inspect
 import torch
@@ -79,6 +80,16 @@ class TestPipe(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-pipe",
             "hf-internal-testing/tiny-controlnet",
         )
+
+    """
+    def test_run_pipe_flux_controlnet_text2image(self):
+        #this test will fail if you haven't logged in with hf
+        self.assertIsNotNone(huggingface_hub.get_token())
+        self._test_controlnet_text2image(
+            "black-forest-labs/FLUX.1-dev",
+            "XLabs-AI/flux-controlnet-depth-diffusers",
+        )
+    """
 
     def test_run_pipe_stable_diffusion_controlnet_image2image(self):
         self._test_controlnet_image2image(
