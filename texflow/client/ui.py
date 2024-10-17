@@ -1,5 +1,4 @@
 import random
-import torch
 import traceback
 import numpy as np
 import asyncio
@@ -94,6 +93,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "Generate"
     bl_idname = "texflow.generate"
     bl_description = "Generate a texture"
+    task_name = "texflow.generate"
 
     stop_upon_exception = True
 
@@ -109,11 +109,14 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     async def update_ui(self, step):
         texflow_state = get_texflow_state()
         texflow_state.current_step = step
-        should_stop = not texflow_state.is_running
-        return should_stop
 
     async def async_execute(self, context):
         texflow = context.scene.texflow
+        texflow_state = get_texflow_state()
+
+        if texflow_state.is_running:
+            raise ValueError("Generator already running!")
+
         get_texflow_state().is_running = True
 
         height = texflow.height
@@ -128,15 +131,8 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         loop = asyncio.get_event_loop()
 
-        def callback_on_step_end(pipe, step, timestep, callback_kwargs):
-            should_stop = loop.run_until_complete(self.update_ui(step))
-
-            if should_stop:
-                pipe._interrupt = True
-                # Not all pipes implement _interrupt,
-                # So we just quit
-                raise Exception("Diffusion pipe interrupted")
-
+        def callback_on_step_end(_, step, timestep, callback_kwargs):
+            loop.call_soon_threadsafe(self.update_ui(step))
             return callback_kwargs
 
         obj = context.active_object
@@ -160,8 +156,8 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         depth_map = 1 - depth_map
         depth_map = depth_map.unsqueeze(0).repeat(3, 1, 1)
 
-        generated_image = await asyncio.to_thread(
-            run_pipe,
+        # generated_image = await asyncio.to_thread(
+        generated_image = run_pipe(
             pipe=pipe,
             prompt=prompt,
             negative_prompt=texflow.negative_prompt,
@@ -175,11 +171,6 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             seed=texflow.seed,
             callback_on_step_end=callback_on_step_end,
         )
-
-        should_stop = not get_texflow_state().is_running
-        if should_stop:
-            self.quit()
-            return
 
         clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
         base_name = f"texflow{clean_prompt}"
@@ -199,7 +190,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         )
         blender_image.pixels.foreach_set(generated_image.flatten())
         blender_image.pack()
-        blender_image.reload()
+        # blender_image.reload()
 
         material = bpy.data.materials.new(name=f"{base_name}_Material")
         material.use_nodes = True
@@ -233,8 +224,9 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
                 p.material_index = material_index
 
         print("GENERATED IMAGE TO", blender_image.name)
+        self.report({"INFO"}, "Finished generating image")
 
-        get_texflow_state().is_running = False
+        texflow_state.is_running = False
 
         self.quit()
 
@@ -243,6 +235,7 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "Load model"
     bl_idname = "texflow.load_model"
     bl_description = "Load a model from huggingface"
+    task_name = "texflow.load_model"
 
     @classmethod
     def poll(cls, context):
@@ -251,6 +244,7 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
     async def async_execute(self, context):
         texflow = context.scene.texflow
+        get_texflow_state().pipe = None
         try:
             pipe = await asyncio.to_thread(
                 load_pipe,
@@ -264,7 +258,7 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             self.quit()
             return
 
-        print("Loaded Pipe")
+        self.report({"INFO"}, f"Loaded Pipe {pipe.name_or_path}")
 
         state = get_texflow_state()
         state.pipe = pipe
@@ -280,7 +274,7 @@ class StopGenerationOperator(bpy.types.Operator):
     bl_description = "Stop generation"
 
     def execute(self, context):
-        get_texflow_state().is_running = False
+        StartGenerationOperator.cancel_loop()
         return {"FINISHED"}
 
 
@@ -325,6 +319,7 @@ class TexflowAdvancedPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
     bl_label = "Advanced Prompting"
     bl_idname = "TEXFLOW_PT_texflow_avanced_prompt_panel"
     bl_parent_id = TexflowParentPanel.bl_idname
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout

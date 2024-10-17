@@ -237,7 +237,10 @@ class AsyncLoopModalOperator(bpy.types.Operator):
             return {"PASS_THROUGH"}
 
         # self.log.debug('KICKING LOOP')
-        stop_after_this_kick = kick_async_loop()
+        try:
+            stop_after_this_kick = kick_async_loop()
+        except:
+            stop_after_this_kick = True
         if stop_after_this_kick:
             context.window_manager.event_timer_remove(self.timer)
             _loop_kicking_operator_running = False
@@ -250,7 +253,7 @@ class AsyncLoopModalOperator(bpy.types.Operator):
 
 # noinspection PyAttributeOutsideInit
 class AsyncModalOperatorMixin:
-    async_task = None  # asyncio task for fetching thumbnails
+    async_task = None
     signalling_future = (
         None  # asyncio future for signalling that we want to cancel everything.
     )
@@ -258,6 +261,10 @@ class AsyncModalOperatorMixin:
 
     _state = "INITIALIZING"
     stop_upon_exception = False
+    task_name = None  # Must be implemented in child class
+    single_task_mode = (
+        True  # Whether only one task called `task_name` can be run at a time
+    )
 
     def invoke(self, context, event):
         context.window_manager.modal_handler_add(self)
@@ -322,6 +329,9 @@ class AsyncModalOperatorMixin:
         # Download the previews asynchronously.
         self.signalling_future = future or asyncio.Future()
         self.async_task = asyncio.ensure_future(async_task)
+        task_name = self.task_name
+        assert task_name is not None
+        self.async_task.set_name(task_name)
         self.log.debug("Created new task %r", self.async_task)
 
         # Start the async manager so everything happens.
@@ -356,3 +366,13 @@ class AsyncModalOperatorMixin:
             self.log.info("Asynchronous task was cancelled")
         except Exception:
             self.log.exception("Exception from asynchronous task")
+
+    @classmethod
+    def cancel_loop(cls):
+        if not _loop_kicking_operator_running:
+            return
+        assert cls.task_name is not None
+        tasks = asyncio.all_tasks()
+        for task in tasks:
+            if task.get_name().startswith(cls.task_name):
+                task.cancel()
