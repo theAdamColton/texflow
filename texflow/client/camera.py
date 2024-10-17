@@ -1,11 +1,20 @@
+from contextlib import contextmanager
 import bpy
-import bmesh
 
 from .utils import select_obj
 
 
-def ensure_camera(camera_obj: bpy.types.Object | None = None):
+@contextmanager
+def ensure_temp_camera(camera_obj: bpy.types.Object | None = None):
+    """
+    if camera_obj is not None, does nothing.
+    But if the camera is none, returns a temporary camera that is
+    eventually cleaned up.
+    """
+    added_camera = False
     if camera_obj is None:
+        added_camera = True
+
         old_obj = bpy.context.active_object
 
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -25,5 +34,10 @@ def ensure_camera(camera_obj: bpy.types.Object | None = None):
         bpy.ops.view3d.camera_to_view()
 
     assert camera_obj.type == "CAMERA"
+    assert isinstance(camera_obj, bpy.types.Object)
 
-    return camera_obj
+    try:
+        yield camera_obj
+    finally:
+        if added_camera:
+            bpy.data.objects.remove(camera_obj)

@@ -4,6 +4,7 @@ import asyncio
 import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
 
+from .camera import ensure_temp_camera
 from .utils import select_obj
 from .uv import uv_proj
 from ..state import TexflowState
@@ -65,6 +66,7 @@ class TexflowProperties(bpy.types.PropertyGroup):
         name="CFG Scale",
         default=7.5,
         min=0,
+        max=500.0,
         description="How strongly the prompt influences the image",
     )
     controlnet_conditioning_scale: FloatProperty(
@@ -72,12 +74,14 @@ class TexflowProperties(bpy.types.PropertyGroup):
         description="How strongly the controlnet effects the model",
         min=0.0,
         max=1.0,
+        default=1.0,
     )
     image2image_strength: FloatProperty(
         name="Image2Image Strength",
         description="How strongly the image effects the model",
         min=0.0,
         max=1.0,
+        default=0.6,
     )
 
 
@@ -109,7 +113,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         height = texflow.height
         width = texflow.width
-        camera = texflow.camera
+        camera_obj = texflow.camera
         obj = context.active_object
         prompt = texflow.prompt
 
@@ -127,18 +131,19 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             return callback_kwargs
 
         obj = context.active_object
-        depth_map, depth_occupancy = render_depth_map(
-            obj=obj,
-            camera_obj=camera,
-            height=height,
-            width=width,
-        )
-        uv_layer = uv_proj(
-            obj=obj,
-            camera_obj=camera,
-            height=height,
-            width=width,
-        )
+        with ensure_temp_camera(camera_obj) as camera_obj:
+            depth_map, depth_occupancy = render_depth_map(
+                obj=obj,
+                camera_obj=camera_obj,
+                height=height,
+                width=width,
+            )
+            uv_layer = uv_proj(
+                obj=obj,
+                camera_obj=camera_obj,
+                height=height,
+                width=width,
+            )
 
         pipe = get_texflow_state().pipe
 

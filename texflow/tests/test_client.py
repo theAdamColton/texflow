@@ -1,6 +1,9 @@
+import math
 import time
 import bpy
+import bmesh
 
+from ..client.uv import uv_proj
 from ..client.depth import render_depth_map
 from ..client.async_loop import kick_async_loop
 from ..client.utils import select_obj
@@ -167,3 +170,38 @@ class TestClient(TestCase):
             time.sleep(0.1)
 
         self.assertIsNotNone(state.pipe)
+
+    def test_uv_proj(self):
+        """
+        tests that all the u,vs projected by this cube are visible from the camera
+        """
+        height = 512
+        width = 512
+        bpy.ops.object.camera_add(
+            location=(0.0, -4.0, 0.0), rotation=(math.pi / 2, 0, 0)
+        )
+        camera_obj = bpy.context.active_object
+
+        bpy.ops.mesh.primitive_cube_add()
+        obj = bpy.context.active_object
+        select_obj(obj)
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        uv_proj(obj, camera_obj, height=height, width=width)
+
+        me = obj.data
+        select_obj(obj)
+        bm = bmesh.from_edit_mesh(me)
+
+        uv_layer = bm.loops.layers.uv.verify()
+
+        # adjust uv coordinates
+        for face in bm.faces:
+            for loop in face.loops:
+                loop_uv = loop[uv_layer]
+                uv = loop_uv.uv
+                self.assertGreaterEqual(uv.x, 0)
+                self.assertGreaterEqual(uv.y, 0)
+                self.assertLessEqual(uv.x, 1)
+                self.assertLessEqual(uv.y, 1)
