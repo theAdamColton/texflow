@@ -1,4 +1,5 @@
 import random
+import torch
 import traceback
 import numpy as np
 import asyncio
@@ -6,7 +7,6 @@ import bpy
 from bpy.props import StringProperty, IntProperty, BoolProperty, FloatProperty
 
 from .camera import ensure_temp_camera
-from .utils import select_obj
 from .uv import uv_proj
 from ..state import TexflowState
 from .async_loop import AsyncModalOperatorMixin
@@ -123,7 +123,8 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         prompt = texflow.prompt
 
         if texflow.randomize_seed:
-            texflow.seed = random.randint(0, 99999999999)
+            max_abs = 2**31 - 1
+            texflow.seed = random.randint(-max_abs, max_abs)
 
         loop = asyncio.get_event_loop()
 
@@ -293,6 +294,9 @@ class TexflowParentPanel(bpy.types.Panel, _TexflowPanelMixin):
     bl_label = "texflow"
     bl_idname = "TEXFLOW_PT_texflow_parent_panel"
 
+    def draw(self, context):
+        pass
+
 
 class TexflowModelPanel(bpy.types.Panel, _TexflowPanelMixin):
     bl_label = "Model"
@@ -337,7 +341,7 @@ class TexflowAdvancedPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
 
 class TexflowPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
     bl_label = "Prompting"
-    bl_idname = "TEXFLOW_PT_texflow_avanced_prompt_panel"
+    bl_idname = "TEXFLOW_PT_texflow_prompt_panel"
     bl_parent_id = TexflowParentPanel.bl_idname
     bl_options = {"HIDE_HEADER"}
 
