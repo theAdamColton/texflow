@@ -51,10 +51,10 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
     height: IntProperty(name="Height", default=512, min=64, step=64)
     width: IntProperty(name="Width", default=512, min=64, step=64)
-    random_seed: BoolProperty(
+    use_random_seed: BoolProperty(
         name="Random Seed", default=True, description="Randomly pick a seed"
     )
-    seed: StringProperty(name="Seed", default="0", description="Manually pick a seed")
+    seed: IntProperty(name="Seed", default=42, description="Manual seed for random")
     steps: IntProperty(name="Steps", default=25, min=1)
     camera: bpy.props.PointerProperty(
         name="Camera",
@@ -127,15 +127,12 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             return callback_kwargs
 
         obj = context.active_object
-        bpy.ops.object.mode_set(mode="OBJECT")
         depth_map, depth_occupancy = render_depth_map(
             obj=obj,
             camera_obj=camera,
             height=height,
             width=width,
         )
-        select_obj(obj)
-        bpy.ops.object.mode_set(mode="EDIT")
         uv_layer = uv_proj(
             obj=obj,
             camera_obj=camera,
@@ -187,6 +184,8 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             axis=-1,
         )
         blender_image.pixels.foreach_set(generated_image.flatten())
+        blender_image.pack()
+        blender_image.reload()
 
         material = bpy.data.materials.new(name=f"{base_name}_Material")
         material.use_nodes = True
@@ -302,6 +301,10 @@ class TexflowPanel(bpy.types.Panel):
             layout.label(text=f"Model loaded: {pipe.name_or_path}")
         else:
             layout.label(text=f"No model loaded.")
+
+        layout.label(text="Prompt:")
+        layout.prop(texflow, "prompt", text="")
+        layout.prop(texflow, "seed")
 
         row = layout.row()
         row.enabled = (not is_running) and model_loaded

@@ -1,12 +1,19 @@
 import bpy
 import bmesh
 
+from .utils import select_obj
+
 
 def ensure_camera(camera_obj: bpy.types.Object | None = None):
     if camera_obj is None:
+        old_obj = bpy.context.active_object
+
+        bpy.ops.object.mode_set(mode="OBJECT")
         bpy.ops.object.camera_add()
         camera_obj = bpy.context.active_object
         camera_obj.name = "texflow-camera"
+        select_obj(old_obj)
+        bpy.ops.object.mode_set(mode="EDIT")
         screen_areas = bpy.context.screen.areas
         view_3d_areas = [a for a in screen_areas if a.type == "VIEW_3D"]
         if len(view_3d_areas) != 1:

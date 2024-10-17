@@ -13,6 +13,7 @@ def uv_proj(
     mesh = obj.data
     assert isinstance(mesh, bpy.types.Mesh)
 
+    need_cleanup_camera = camera_obj is None
     camera_obj = ensure_camera(camera_obj)
     bm = bmesh.from_edit_mesh(mesh)
 
@@ -40,10 +41,13 @@ def uv_proj(
                 continue
             co_3d = obj.matrix_world @ loop.vert.co
             co_2d = projection_matrix @ camera_matrix @ co_3d
-            if co_2d.z < 0:  # Check if the point is behind the camera
-                continue
+            # if co_2d.z < 0:  # Check if the point is behind the camera
+            #     continue
             loop_uv.uv[0] = co_2d.x / co_2d.z / (height / width) + 0.5
             loop_uv.uv[1] = co_2d.y / co_2d.z + 0.5
     bmesh.update_edit_mesh(mesh)
+
+    if need_cleanup_camera:
+        bpy.data.objects.remove(camera_obj)
 
     return new_uv_layer
