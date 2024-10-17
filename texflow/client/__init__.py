@@ -5,7 +5,9 @@ from ..utils import DESCRIPTION, VERSION_TUPLE
 from .ui import (
     LoadModelOperator,
     TexflowProperties,
-    TexflowPanel,
+    TexflowMainPanel,
+    TexflowModelPanel,
+    TexflowAdvancedPromptPanel,
     StartGenerationOperator,
     StopGenerationOperator,
 )
@@ -23,7 +25,9 @@ bl_info = {
 }
 
 classes = (
-    TexflowPanel,
+    TexflowMainPanel,
+    TexflowModelPanel,
+    TexflowAdvancedPromptPanel,
     StartGenerationOperator,
     StopGenerationOperator,
     TexflowProperties,

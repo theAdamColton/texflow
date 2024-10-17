@@ -32,12 +32,12 @@ class TexflowProperties(bpy.types.PropertyGroup):
     model_path: bpy.props.StringProperty(
         name="Base model path",
         description="URL of pretrained model hosted inside a model repo on huggingface.co",
-        default="",
+        default="stabilityai/stable-diffusion-2-1",
     )
     controlnet_model_path: bpy.props.StringProperty(
         name="Controlnet Path",
         description="URL of a pretrained controlnet model hosted inside a model repo on huggingface.co",
-        default="",
+        default="thibaud/controlnet-sd21-depth-diffusers",
     )
     token: bpy.props.StringProperty(
         name="Huggingface Token",
@@ -275,12 +275,15 @@ class StopGenerationOperator(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class TexflowPanel(bpy.types.Panel):
-    bl_label = "texflow"
-    bl_idname = f"TEXFLOW_PT_texflow_panel_IMAGE_EDITOR"
+class _TexflowPanelMixin:
     bl_category = "texflow"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
+
+
+class TexflowMainPanel(bpy.types.Panel, _TexflowPanelMixin):
+    bl_label = "texflow"
+    bl_idname = "TEXFLOW_PT_texflow_main_panel"
 
     def draw(self, context):
         layout = self.layout
@@ -294,13 +297,6 @@ class TexflowPanel(bpy.types.Panel):
         layout.prop_search(
             texflow, "camera", bpy.data, "objects", text="Camera (Optional)"
         )
-        layout.label(text="Base Model Path:")
-        layout.prop(texflow, "model_path", text="")
-        layout.label(text="ControlNet Model path (Optional):")
-        layout.prop(texflow, "controlnet_model_path", text="")
-        layout.label(text="HuggingFace token (Optional):")
-        layout.prop(texflow, "token", text="")
-        layout.operator(LoadModelOperator.bl_idname)
 
         if model_loaded:
             layout.label(text=f"Model loaded: {pipe.name_or_path}")
@@ -309,7 +305,9 @@ class TexflowPanel(bpy.types.Panel):
 
         layout.label(text="Prompt:")
         layout.prop(texflow, "prompt", text="")
-        layout.prop(texflow, "seed")
+
+        layout.prop(texflow, "height")
+        layout.prop(texflow, "width")
 
         row = layout.row()
         row.enabled = (not is_running) and model_loaded
@@ -322,3 +320,44 @@ class TexflowPanel(bpy.types.Panel):
         )
         row.operator(StopGenerationOperator.bl_idname, text="Interrupt")
         row.enabled = is_running
+
+
+class TexflowModelPanel(bpy.types.Panel, _TexflowPanelMixin):
+    bl_label = "Model"
+    bl_idname = "TEXFLOW_PT_texflow_model_panel"
+    bl_parent_id = TexflowMainPanel.bl_idname
+
+    def draw(self, context):
+        layout = self.layout
+        texflow_state = get_texflow_state()
+        texflow = context.scene.texflow
+
+        is_running = texflow_state.is_running
+        pipe = texflow_state.pipe
+        model_loaded = pipe is not None
+
+        layout.label(text="Base Model Path:")
+        layout.prop(texflow, "model_path", text="")
+        layout.label(text="ControlNet Model path (Optional):")
+        layout.prop(texflow, "controlnet_model_path", text="")
+        layout.label(text="HuggingFace token (Optional):")
+        layout.prop(texflow, "token", text="")
+        layout.operator(LoadModelOperator.bl_idname)
+
+
+class TexflowAdvancedPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
+    bl_label = "Model"
+    bl_idname = "TEXFLOW_PT_texflow_avanced_prompt_panel"
+    bl_parent_id = TexflowMainPanel.bl_idname
+
+    def draw(self, context):
+        layout = self.layout
+        texflow = context.scene.texflow
+
+        layout.prop(texflow, "seed")
+        layout.prop(texflow, "cfg_scale")
+        layout.prop(texflow, "steps")
+        layout.label(text="Negative Prompt:")
+        layout.prop(texflow, "negative_prompt", text="")
+        layout.prop(texflow, "controlnet_conditioning_scale")
+        layout.prop(texflow, "image2image_strength")
