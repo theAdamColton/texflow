@@ -28,7 +28,7 @@ def ui_update(_, context):
                 region.tag_redraw()
 
 
-class TexflowProperties(bpy.types.PropertyGroup):
+class ModelPathProperty(bpy.types.PropertyGroup):
     model_path: bpy.props.StringProperty(
         name="Base model path",
         description="URL of pretrained model hosted inside a model repo on huggingface.co",
@@ -39,6 +39,12 @@ class TexflowProperties(bpy.types.PropertyGroup):
         description="URL of a pretrained controlnet model hosted inside a model repo on huggingface.co",
         default="thibaud/controlnet-sd21-depth-diffusers",
     )
+
+
+class TexflowProperties(bpy.types.PropertyGroup):
+    model_path_history: bpy.props.CollectionProperty(type=ModelPathProperty)
+    model_path_history_index: bpy.props.IntProperty(default=0)
+    current_model_path: bpy.props.PointerProperty(type=ModelPathProperty)
     token: bpy.props.StringProperty(
         name="Huggingface Token",
         description="Your private huggingface API token",
@@ -114,10 +120,12 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         texflow = context.scene.texflow
         texflow_state = get_texflow_state()
 
-        if texflow_state.is_running:
-            raise ValueError("Generator already running!")
+        if texflow_state.status != "PENDING":
+            raise ValueError(
+                f"Can't start generation when texflow_status is {texflow_state.status}!"
+            )
 
-        get_texflow_state().is_running = True
+        get_texflow_state().status = "RUNNING"
 
         height = texflow.height
         width = texflow.width
@@ -156,8 +164,9 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         depth_map = 1 - depth_map
         depth_map = depth_map.unsqueeze(0).repeat(3, 1, 1)
 
-        # generated_image = await asyncio.to_thread(
-        generated_image = run_pipe(
+        generated_image = await asyncio.to_thread(
+            run_pipe,
+            # generated_image = run_pipe(
             pipe=pipe,
             prompt=prompt,
             negative_prompt=texflow.negative_prompt,
@@ -169,7 +178,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             num_inference_steps=texflow.steps,
             guidance_scale=texflow.cfg_scale,
             seed=texflow.seed,
-            callback_on_step_end=callback_on_step_end,
+            # callback_on_step_end=callback_on_step_end,
         )
 
         clean_prompt = "".join([c if c.isalnum() else "-" for c in prompt][:20])
@@ -190,7 +199,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         )
         blender_image.pixels.foreach_set(generated_image.flatten())
         blender_image.pack()
-        # blender_image.reload()
+        blender_image.reload()
 
         material = bpy.data.materials.new(name=f"{base_name}_Material")
         material.use_nodes = True
@@ -226,7 +235,7 @@ class StartGenerationOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         print("GENERATED IMAGE TO", blender_image.name)
         self.report({"INFO"}, "Finished generating image")
 
-        texflow_state.is_running = False
+        get_texflow_state().status = "PENDING"
 
         self.quit()
 
@@ -240,17 +249,44 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     @classmethod
     def poll(cls, context):
         texflow = context.scene.texflow
-        return texflow.model_path != ""
+        return texflow.current_model_path.model_path != ""
 
     async def async_execute(self, context):
         texflow = context.scene.texflow
         get_texflow_state().pipe = None
+
+        texflow_status = get_texflow_state().status
+        if texflow_status != "PENDING":
+            raise ValueError(
+                f"Can't load model when texflow_status is {texflow_status}"
+            )
+
+        get_texflow_state().status = "LOADING"
+
+        model_path = texflow.current_model_path.model_path
+        controlnet_model_path = texflow.current_model_path.controlnet_model_path
+
+        main_thread_loop = asyncio.get_event_loop()
+
+        def _update_ui_mainthread(n, total):
+            get_texflow_state().load_step = n
+            get_texflow_state().load_max_step = total
+            ui_update(None, bpy.context)
+            print("UI UPDATE MAIN THREAD", n, total)
+
+        def tqdm_callback(n, total):
+            print("TQDM CALLBACK", n, total)
+            asyncio.run_coroutine_threadsafe(
+                asyncio.to_thread(_update_ui_mainthread, n, total), main_thread_loop
+            )
+
         try:
             pipe = await asyncio.to_thread(
                 load_pipe,
-                pretrained_model_or_path=texflow.model_path,
-                controlnet_models_or_paths=[texflow.controlnet_model_path],
+                pretrained_model_or_path=model_path,
+                controlnet_models_or_paths=[controlnet_model_path],
                 token=texflow.token if texflow.token != "" else None,
+                tqdm_callback=tqdm_callback,
             )
         except Exception as e:
             traceback.print_exception(e)
@@ -258,12 +294,32 @@ class LoadModelOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             self.quit()
             return
 
+        get_texflow_state().load_step = get_texflow_state().load_max_step
+        ui_update(None, bpy.context)
+
+        # removes identical items from history
+        for index, saved_model_path_property in enumerate(texflow.model_path_history):
+            saved_model_path = saved_model_path_property.model_path
+            saved_controlnet_path = saved_model_path_property.controlnet_model_path
+            if (
+                saved_model_path == model_path
+                and saved_controlnet_path == controlnet_model_path
+            ):
+                texflow.model_path_history.remove(index)
+
+        # adds to history
+        saved_model_path_property = texflow.model_path_history.add()
+        saved_model_path_property.model_path = model_path
+        saved_model_path_property.controlnet_model_path = controlnet_model_path
+
         self.report({"INFO"}, f"Loaded Pipe {pipe.name_or_path}")
 
         state = get_texflow_state()
         state.pipe = pipe
 
         ui_update(None, context)
+
+        get_texflow_state().status = "PENDING"
 
         self.quit()
 
@@ -274,7 +330,7 @@ class StopGenerationOperator(bpy.types.Operator):
     bl_description = "Stop generation"
 
     def execute(self, context):
-        StartGenerationOperator.cancel_loop()
+        StartGenerationOperator.cancel_tasks()
         return {"FINISHED"}
 
 
@@ -292,6 +348,55 @@ class TexflowParentPanel(bpy.types.Panel, _TexflowPanelMixin):
         pass
 
 
+class TexflowApplyModelHistory(bpy.types.Operator):
+    bl_label = "Use"
+    bl_idname = "texflow.apply_model_history"
+    bl_description = "Use this model path"
+
+    @classmethod
+    def poll(cls, context):
+        texflow = context.scene.texflow
+        index = texflow.model_path_history_index
+        return index >= 0 and index < len(texflow.model_path_history)
+
+    def execute(self, context):
+        texflow = context.scene.texflow
+        model_path_property = texflow.model_path_history[
+            texflow.model_path_history_index
+        ]
+
+        texflow.current_model_path.model_path = model_path_property.model_path
+        texflow.current_model_path.controlnet_model_path = (
+            model_path_property.controlnet_model_path
+        )
+
+        return {"FINISHED"}
+
+        self.model_path_property
+
+
+class TexflowModelHistoryList(bpy.types.UIList):
+    bl_idname = "TEXFLOW_UL_texflow_model_history_list"
+
+    def draw_item(
+        self,
+        context,
+        layout,
+        data,
+        item,
+        icon,
+        active_data,
+        active_property,
+        index=0,
+        flt_flag=0,
+    ):
+        text = item.model_path
+        if item.controlnet_model_path != "":
+            text += f"  {item.controlnet_model_path}"
+        row = layout.row()
+        row.label(text=text)
+
+
 class TexflowModelPanel(bpy.types.Panel, _TexflowPanelMixin):
     bl_label = "Model"
     bl_idname = "TEXFLOW_PT_texflow_model_panel"
@@ -302,17 +407,41 @@ class TexflowModelPanel(bpy.types.Panel, _TexflowPanelMixin):
         texflow_state = get_texflow_state()
         texflow = context.scene.texflow
 
-        is_running = texflow_state.is_running
+        texflow_status = texflow_state.status
         pipe = texflow_state.pipe
         model_loaded = pipe is not None
 
         layout.label(text="Base Model Path:")
-        layout.prop(texflow, "model_path", text="")
+        layout.prop(texflow.current_model_path, "model_path", text="")
         layout.label(text="ControlNet Model path (Optional):")
-        layout.prop(texflow, "controlnet_model_path", text="")
+        layout.prop(texflow.current_model_path, "controlnet_model_path", text="")
         layout.label(text="HuggingFace token (Optional):")
         layout.prop(texflow, "token", text="")
-        layout.operator(LoadModelOperator.bl_idname)
+
+        layout.separator()
+        layout.label(text="Model History:")
+        layout.template_list(
+            TexflowModelHistoryList.bl_idname,
+            "",
+            texflow,
+            "model_path_history",
+            texflow,
+            "model_path_history_index",
+        )
+        layout.operator(TexflowApplyModelHistory.bl_idname)
+
+        layout.separator(factor=1.5)
+        row = layout.row()
+        col = row.column()
+        col.operator(LoadModelOperator.bl_idname)
+        col.enabled = texflow_status == "PENDING"
+
+        col = row.column()
+        col.progress(
+            text=f"{texflow_state.load_step}/{texflow_state.load_max_step}",
+            factor=texflow_state.load_step / max(texflow_state.load_max_step, 1),
+        )
+        col.enabled = texflow_status == "LOADING"
 
 
 class TexflowAdvancedPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
@@ -345,18 +474,17 @@ class TexflowPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
         texflow_state = get_texflow_state()
         texflow = context.scene.texflow
 
-        is_running = texflow_state.is_running
+        texflow_status = texflow_state.status
         pipe = texflow_state.pipe
         model_loaded = pipe is not None
-
-        layout.prop_search(
-            texflow, "camera", bpy.data, "objects", text="Camera (Optional)"
-        )
 
         if model_loaded:
             layout.label(text=f"Model loaded: {pipe.name_or_path}")
         else:
             layout.label(text=f"No model loaded.")
+
+        layout.separator()
+        layout.prop_search(texflow, "camera", bpy.data, "objects")
 
         layout.label(text="Prompt:")
         layout.prop(texflow, "prompt", text="")
@@ -364,8 +492,9 @@ class TexflowPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
         layout.prop(texflow, "height")
         layout.prop(texflow, "width")
 
+        layout.separator()
         row = layout.row()
-        row.enabled = (not is_running) and model_loaded
+        row.enabled = (texflow_status == "PENDING") and model_loaded
         row.operator(StartGenerationOperator.bl_idname)
 
         row = layout.row()
@@ -374,4 +503,4 @@ class TexflowPromptPanel(bpy.types.Panel, _TexflowPanelMixin):
             factor=texflow_state.current_step / texflow.steps,
         )
         row.operator(StopGenerationOperator.bl_idname, text="Interrupt")
-        row.enabled = is_running
+        row.enabled = texflow_status == "RUNNING"

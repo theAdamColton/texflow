@@ -9,18 +9,24 @@ def ensure_temp_camera(camera_obj: bpy.types.Object | None = None):
     """
     if camera_obj is not None, does nothing.
     But if the camera is none, returns a temporary camera that is
-    eventually cleaned up.
+    aligned with the viewport. After exiting the context the temp
+    camera is cleaned up.
     """
     added_camera = False
+    old_camera = None
     if camera_obj is None:
         added_camera = True
 
         old_obj = bpy.context.active_object
 
         bpy.ops.object.mode_set(mode="OBJECT")
+
+        old_camera = bpy.context.scene.camera
         bpy.ops.object.camera_add()
         camera_obj = bpy.context.active_object
         camera_obj.name = "texflow-camera"
+        bpy.context.scene.camera = camera_obj
+
         select_obj(old_obj)
         bpy.ops.object.mode_set(mode="EDIT")
         screen_areas = bpy.context.screen.areas
@@ -41,3 +47,4 @@ def ensure_temp_camera(camera_obj: bpy.types.Object | None = None):
     finally:
         if added_camera:
             bpy.data.objects.remove(camera_obj)
+            bpy.context.scene.camera = old_camera

@@ -2,6 +2,7 @@ import torch
 import gc
 import asyncio
 import bpy
+import logging
 
 from ..state import TexflowState
 from ..utils import DESCRIPTION, VERSION_TUPLE
@@ -11,12 +12,19 @@ from .ui import (
     TexflowParentPanel,
     TexflowPromptPanel,
     TexflowModelPanel,
+    ModelPathProperty,
     TexflowAdvancedPromptPanel,
+    TexflowApplyModelHistory,
+    TexflowModelHistoryList,
     StartGenerationOperator,
     StopGenerationOperator,
 )
 from .async_loop import AsyncLoopModalOperator, AsyncModalOperatorMixin
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s",
+)
 
 bl_info = {
     "name": "texflow",
@@ -33,6 +41,9 @@ classes = (
     TexflowModelPanel,
     TexflowAdvancedPromptPanel,
     TexflowPromptPanel,
+    TexflowApplyModelHistory,
+    ModelPathProperty,
+    TexflowModelHistoryList,
     StartGenerationOperator,
     StopGenerationOperator,
     TexflowProperties,

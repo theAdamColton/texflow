@@ -105,7 +105,7 @@ class TestClient(TestCase):
             self.assertLess(i, limit)
 
         self.assertEqual(len(obj.data.materials), 0)
-        self.assertFalse(get_texflow_state().is_running)
+        self.assertFalse(get_texflow_state().status)
 
     def test_generate(self):
         state = get_texflow_state()
@@ -148,15 +148,41 @@ class TestClient(TestCase):
         generated_image = diffuse_node.image
 
         self.assertEqual((height, width), tuple(generated_image.size))
-        self.assertFalse(get_texflow_state().is_running)
+        self.assertEqual("PENDING", get_texflow_state().status)
 
     def test_load_model(self):
-        bpy.context.scene.texflow.model_path = (
+        bpy.context.scene.texflow.current_model_path.model_path = (
             "hf-internal-testing/tiny-stable-diffusion-pipe"
         )
-        bpy.context.scene.texflow.controlnet_model_path = (
+        bpy.context.scene.texflow.current_model_path.controlnet_model_path = (
             "hf-internal-testing/tiny-controlnet"
         )
+        bpy.ops.texflow.load_model()
+        timeout = 10
+        st = time.time()
+        while True:
+            kick_async_loop()
+            state = get_texflow_state()
+            if state.pipe is not None:
+                break
+            duration = time.time() - st
+            self.assertLess(duration, timeout)
+            time.sleep(0.1)
+
+        self.assertIsNotNone(get_texflow_state().pipe)
+        self.assertGreater(get_texflow_state().load_step, 0)
+
+    def test_spam_load_model(self):
+        bpy.context.scene.texflow.current_model_path.model_path = (
+            "hf-internal-testing/tiny-stable-diffusion-pipe"
+        )
+        bpy.context.scene.texflow.current_model_path.controlnet_model_path = (
+            "hf-internal-testing/tiny-controlnet"
+        )
+        bpy.ops.texflow.load_model()
+        bpy.ops.texflow.load_model()
+        bpy.ops.texflow.load_model()
+        bpy.ops.texflow.load_model()
         bpy.ops.texflow.load_model()
         timeout = 10
         st = time.time()
@@ -205,3 +231,40 @@ class TestClient(TestCase):
                 self.assertGreaterEqual(uv.y, 0)
                 self.assertLessEqual(uv.x, 1)
                 self.assertLessEqual(uv.y, 1)
+
+    def test_apply_history(self):
+        texflow = bpy.context.scene.texflow
+        self.assertEqual(0, len(texflow.model_path_history))
+
+        texflow.current_model_path.model_path = (
+            "hf-internal-testing/tiny-stable-diffusion-pipe"
+        )
+        texflow.current_model_path.controlnet_model_path = (
+            "hf-internal-testing/tiny-controlnet"
+        )
+        bpy.ops.texflow.load_model()
+        timeout = 10
+        st = time.time()
+        while True:
+            kick_async_loop()
+            state = get_texflow_state()
+            if state.pipe is not None:
+                break
+            duration = time.time() - st
+            self.assertLess(duration, timeout)
+            time.sleep(0.1)
+
+        self.assertIsNotNone(state.pipe)
+
+        self.assertEqual(1, len(texflow.model_path_history))
+
+        texflow.model_path_history_index = 0
+        model_path_2 = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        texflow.model_path_history[0].model_path = model_path_2
+        texflow.model_path_history[0].controlnet_model_path = (
+            "hf-internal-testing/tiny-controlnet-sdxl"
+        )
+
+        bpy.ops.texflow.apply_model_history()
+
+        self.assertEqual(model_path_2, texflow.current_model_path.model_path)

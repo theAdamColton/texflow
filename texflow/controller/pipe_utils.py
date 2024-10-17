@@ -1,5 +1,6 @@
+from tqdm import tqdm
+from contextlib import contextmanager
 import inspect
-from accelerate import infer_auto_device_map, init_empty_weights
 import torch
 from diffusers import ControlNetModel
 from diffusers.pipelines.auto_pipeline import (
@@ -39,7 +40,31 @@ def _post_pipe_init(pipe):
     return pipe
 
 
-def _init_model(cls, *args, force_cpu=False, dtype_override=None, **kwargs):
+@contextmanager
+def _hook_tqdm(callback=None):
+    """
+    Hack to hook onto tqdm when diffusers loads the pipes
+    """
+    og_update = tqdm.update
+
+    def update(self: tqdm, n=1):
+        displayed = og_update(self, n)
+        print(f"CUSTOM TQDM UPDATE BY {n} {self.n}/{self.total}")
+        if callback is not None:
+            callback(self.n, self.total)
+        return displayed
+
+    tqdm.update = update
+
+    try:
+        yield
+    finally:
+        tqdm.update = og_update
+
+
+def _init_model(
+    cls, *args, force_cpu=False, dtype_override=None, tqdm_callback=None, **kwargs
+):
     # TODO avoid double copy to device
     device, dtype = _get_best_device_and_dtype()
     if force_cpu:
@@ -48,7 +73,8 @@ def _init_model(cls, *args, force_cpu=False, dtype_override=None, **kwargs):
     if dtype_override is not None:
         dtype = dtype_override
 
-    model = cls(*args, **kwargs, torch_dtype=dtype).to(device=device, dtype=dtype)
+    with _hook_tqdm(tqdm_callback):
+        model = cls(*args, **kwargs, torch_dtype=dtype).to(device=device, dtype=dtype)
     return model
 
 
@@ -58,12 +84,15 @@ def load_pipe(
     token=None,
     dtype_override=None,
     force_cpu=False,
+    tqdm_callback=None,
 ):
     pipe_kwargs = {}
 
     if controlnet_models_or_paths is not None:
         controlnets = [
-            _init_model(ControlNetModel.from_pretrained, path)
+            _init_model(
+                ControlNetModel.from_pretrained, path, tqdm_callback=tqdm_callback
+            )
             for path in controlnet_models_or_paths
         ]
         pipe_kwargs["controlnet"] = controlnets
@@ -76,6 +105,7 @@ def load_pipe(
         pretrained_model_or_path,
         force_cpu=force_cpu,
         dtype_override=dtype_override,
+        tqdm_callback=tqdm_callback,
         **pipe_kwargs,
     )
     pipe = _post_pipe_init(pipe)

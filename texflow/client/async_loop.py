@@ -262,9 +262,6 @@ class AsyncModalOperatorMixin:
     _state = "INITIALIZING"
     stop_upon_exception = False
     task_name = None  # Must be implemented in child class
-    single_task_mode = (
-        True  # Whether only one task called `task_name` can be run at a time
-    )
 
     def invoke(self, context, event):
         context.window_manager.modal_handler_add(self)
@@ -320,7 +317,6 @@ class AsyncModalOperatorMixin:
         self, async_task: typing.Coroutine, future: asyncio.Future = None
     ):
         """Stops the currently running async task, and starts another one."""
-
         self.log.debug(
             "Setting up a new task %r, so any existing task must be stopped", async_task
         )
@@ -368,11 +364,14 @@ class AsyncModalOperatorMixin:
             self.log.exception("Exception from asynchronous task")
 
     @classmethod
-    def cancel_loop(cls):
-        if not _loop_kicking_operator_running:
-            return
+    def cancel_tasks(cls):
         assert cls.task_name is not None
-        tasks = asyncio.all_tasks()
+        try:
+            tasks = asyncio.all_tasks()
+        except:
+            tasks = []
+
         for task in tasks:
             if task.get_name().startswith(cls.task_name):
+                cls.log.info("Cancelling task!", task)
                 task.cancel()
