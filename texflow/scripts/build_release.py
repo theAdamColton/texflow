@@ -87,7 +87,8 @@ if __name__ == "__main__":
             str(build_dir / "wheels"),
             "--no-deps",
             "--only-binary=:all:",
-            "--no-input",
+            "--exists-action",
+            "i",
         ],
         check=True,
     )
@@ -128,7 +129,8 @@ if __name__ == "__main__":
             "--only-binary=:all:",
             "--extra-index-url",
             torch_index_url,
-            "--no-input",
+            "--exists-action",
+            "i",
         ],
         check=True,
     )
@@ -163,7 +165,8 @@ if __name__ == "__main__":
             "macosx_11_0_arm64",
             "--no-deps",
             "--only-binary=:all:",
-            "--no-input",
+            "--exists-action",
+            "i",
         ],
         check=True,
     )
