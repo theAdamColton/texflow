@@ -1,4 +1,3 @@
-import torch
 import gc
 import asyncio
 import bpy
@@ -6,19 +5,7 @@ import logging
 
 from ..state import TexflowState
 from ..utils import DESCRIPTION, VERSION_TUPLE
-from .ui import (
-    LoadModelOperator,
-    TexflowProperties,
-    TexflowParentPanel,
-    TexflowPromptPanel,
-    TexflowModelPanel,
-    ModelPathProperty,
-    TexflowAdvancedPromptPanel,
-    TexflowApplyModelHistory,
-    TexflowModelHistoryList,
-    StartGenerationOperator,
-    StopGenerationOperator,
-)
+from .ui import TexflowProperties, TexflowPanel, RenderDepthImageOperator
 from .async_loop import AsyncLoopModalOperator, AsyncModalOperatorMixin
 
 logging.basicConfig(
@@ -37,18 +24,10 @@ bl_info = {
 }
 
 classes = (
-    TexflowParentPanel,
-    TexflowModelPanel,
-    TexflowAdvancedPromptPanel,
-    TexflowPromptPanel,
-    TexflowApplyModelHistory,
-    ModelPathProperty,
-    TexflowModelHistoryList,
-    StartGenerationOperator,
-    StopGenerationOperator,
+    TexflowPanel,
+    RenderDepthImageOperator,
     TexflowProperties,
     AsyncLoopModalOperator,
-    LoadModelOperator,
 )
 
 
@@ -76,6 +55,3 @@ def unregister():
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.texflow
     del bpy.app.driver_namespace["texflow_state"]
-    # this is necessary to clear up the memory used by the diffusion model
-    gc.collect()
-    torch.cuda.empty_cache()

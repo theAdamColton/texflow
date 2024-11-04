@@ -1,12 +1,27 @@
 from dataclasses import dataclass
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+import uuid
+from enum import Enum
+
+
+class TexflowStatus(Enum):
+    """
+    pending: Not currently connected to comfyui
+    connecting: Trying to initiate a connection to the comfyui server
+    ready: Connected and ready to recieve requests to render depth images
+    running: Currently rendering and uploading a depth image to the comfyui server
+    """
+
+    PENDING = 1
+    CONNECTING = 2
+    READY = 3
+    RUNNING = 4
 
 
 @dataclass
 class TexflowState:
-    pipe: DiffusionPipeline | None = None
-    status: str = "PENDING"  # or "RUNNING" or "LOADING"
-    current_step: int = 0
+    """
+    Transient state that is not saved as part of .blend files
+    """
 
-    load_step: int = 0
-    load_max_step: int = 0
+    status: TexflowStatus = TexflowStatus.PENDING
+    client_id = uuid.uuid4()

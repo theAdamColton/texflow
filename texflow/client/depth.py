@@ -2,7 +2,7 @@ import os
 import bpy
 
 from .scene import ensure_texflow_temp_scene
-from .utils import image_to_tensor
+from .utils import image_to_arr
 
 
 def get_render_pixels():
@@ -14,7 +14,7 @@ def get_render_pixels():
             loaded_img.pixels[
                 0
             ]  # this makes no sense, but it is necessary to load pixels array internally
-            pixel_values = image_to_tensor(loaded_img)
+            pixel_values = image_to_arr(loaded_img)
 
             bpy.data.images.remove(loaded_img)
             try:

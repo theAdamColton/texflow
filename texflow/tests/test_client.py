@@ -1,3 +1,7 @@
+from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp import web
+import numpy as np
+import io
 import math
 import time
 import bpy
@@ -10,21 +14,30 @@ from ..client.utils import select_obj
 from ..client.ui import get_texflow_state
 from ..client import register, unregister
 from ..tests.utils import TestCase, save_image
-from ..controller.pipe_utils import load_pipe
+from ..client.utils import to_tiff
+
+
+def _setUpTexflow():
+    print("SETUP")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    try:
+        unregister()
+    except:
+        pass
+    register()
+
+
+def _tearDownTexflow():
+    unregister()
+    bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
 class TestClient(TestCase):
     def setUp(self):
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-        try:
-            unregister()
-        except:
-            pass
-        register()
+        _setUpTexflow()
 
     def tearDown(self):
-        unregister()
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        _tearDownTexflow()
 
     def test_render_depth_map(self):
         bpy.ops.mesh.primitive_ico_sphere_add()
@@ -65,138 +78,6 @@ class TestClient(TestCase):
             1 - extra_background_distance, depth_map[occupancy].max().item(), 1
         )
 
-    def test_generate_interrupt(self):
-        state = get_texflow_state()
-        pipe = load_pipe(
-            "hf-internal-testing/tiny-stable-diffusion-pipe",
-            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
-        )
-        state.pipe = pipe
-        texflow_props = bpy.context.scene.texflow
-        height = 64
-        width = 64
-        texflow_props.height = height
-        texflow_props.width = width
-        texflow_props.steps = 10
-        bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
-        camera = bpy.context.active_object
-        texflow_props.camera = camera
-
-        bpy.ops.mesh.primitive_ico_sphere_add()
-        obj = bpy.context.active_object
-        select_obj(obj)
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.texflow.generate()
-
-        kick_async_loop()
-        kick_async_loop()
-
-        bpy.ops.texflow.interrupt()
-
-        limit = 100
-        i = 0
-        stop = False
-        while not stop:
-            stop = kick_async_loop()
-            print(i, get_texflow_state().current_step)
-            time.sleep(0.1)
-            i += 1
-            self.assertLess(i, limit)
-
-        self.assertEqual(len(obj.data.materials), 0)
-        self.assertFalse(get_texflow_state().status)
-
-    def test_generate(self):
-        state = get_texflow_state()
-        pipe = load_pipe(
-            "hf-internal-testing/tiny-stable-diffusion-pipe",
-            controlnet_models_or_paths=["hf-internal-testing/tiny-controlnet"],
-        )
-        state.pipe = pipe
-        texflow_props = bpy.context.scene.texflow
-        height = 64
-        width = 64
-        texflow_props.height = height
-        texflow_props.width = width
-        texflow_props.steps = 4
-        bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
-        camera = bpy.context.active_object
-        texflow_props.camera = camera
-
-        bpy.ops.mesh.primitive_ico_sphere_add()
-        obj = bpy.context.active_object
-        select_obj(obj)
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.texflow.generate()
-
-        limit = 100
-        i = 0
-        stop = False
-        while not stop:
-            stop = kick_async_loop()
-            print(i, get_texflow_state().current_step)
-            time.sleep(0.1)
-            i += 1
-            self.assertLess(i, limit)
-
-        new_material = obj.data.materials[-1]
-        diffuse_node = next(
-            node for node in new_material.node_tree.nodes if node.type == "TEX_IMAGE"
-        )
-        generated_image = diffuse_node.image
-
-        self.assertEqual((height, width), tuple(generated_image.size))
-        self.assertEqual("PENDING", get_texflow_state().status)
-
-    def test_load_model(self):
-        bpy.context.scene.texflow.current_model_path.model_path = (
-            "hf-internal-testing/tiny-stable-diffusion-pipe"
-        )
-        bpy.context.scene.texflow.current_model_path.controlnet_model_path = (
-            "hf-internal-testing/tiny-controlnet"
-        )
-        bpy.ops.texflow.load_model()
-        timeout = 10
-        st = time.time()
-        while True:
-            kick_async_loop()
-            state = get_texflow_state()
-            if state.pipe is not None:
-                break
-            duration = time.time() - st
-            self.assertLess(duration, timeout)
-            time.sleep(0.1)
-
-        self.assertIsNotNone(get_texflow_state().pipe)
-        self.assertGreater(get_texflow_state().load_step, 0)
-
-    def test_spam_load_model(self):
-        bpy.context.scene.texflow.current_model_path.model_path = (
-            "hf-internal-testing/tiny-stable-diffusion-pipe"
-        )
-        bpy.context.scene.texflow.current_model_path.controlnet_model_path = (
-            "hf-internal-testing/tiny-controlnet"
-        )
-        bpy.ops.texflow.load_model()
-        bpy.ops.texflow.load_model()
-        bpy.ops.texflow.load_model()
-        bpy.ops.texflow.load_model()
-        bpy.ops.texflow.load_model()
-        timeout = 10
-        st = time.time()
-        while True:
-            kick_async_loop()
-            state = get_texflow_state()
-            if state.pipe is not None:
-                break
-            duration = time.time() - st
-            self.assertLess(duration, timeout)
-            time.sleep(0.1)
-
-        self.assertIsNotNone(state.pipe)
-
     def test_uv_proj(self):
         """
         tests that all the u,vs projected by this cube are visible from the camera
@@ -232,39 +113,41 @@ class TestClient(TestCase):
                 self.assertLessEqual(uv.x, 1)
                 self.assertLessEqual(uv.y, 1)
 
-    def test_apply_history(self):
+    def test_save_tiff(self):
+        arr = np.random.random((32, 32))
+        im = to_tiff(arr)
+        rec_arr = np.asarray(im) / 2**16
+        self.assertTrue(np.allclose(arr, rec_arr, 1e-4, 1e-4))
+
+
+class TestClientServer(AioHTTPTestCase):
+    async def asyncSetUp(self) -> None:
+        _setUpTexflow()
+        return await super().asyncSetUp()
+
+    async def asyncTearDown(self) -> None:
+        _tearDownTexflow()
+        return await super().asyncTearDown()
+
+    async def get_application(self):
+        routes = web.RouteTableDef()
+
+        @routes.post("/upload/image")
+        async def upload_image(request):
+            post = await request.post()
+            return web.json_response(
+                {
+                    "name": "dummyfilename",
+                    "subfolder": "some/subfolder",
+                    "type": "some type",
+                }
+            )
+
+        app = web.Application()
+        app.add_routes(routes)
+        return app
+
+    async def test_render_depth_map(self):
+        await self.asyncSetUp()
         texflow = bpy.context.scene.texflow
-        self.assertEqual(0, len(texflow.model_path_history))
-
-        texflow.current_model_path.model_path = (
-            "hf-internal-testing/tiny-stable-diffusion-pipe"
-        )
-        texflow.current_model_path.controlnet_model_path = (
-            "hf-internal-testing/tiny-controlnet"
-        )
-        bpy.ops.texflow.load_model()
-        timeout = 10
-        st = time.time()
-        while True:
-            kick_async_loop()
-            state = get_texflow_state()
-            if state.pipe is not None:
-                break
-            duration = time.time() - st
-            self.assertLess(duration, timeout)
-            time.sleep(0.1)
-
-        self.assertIsNotNone(state.pipe)
-
-        self.assertEqual(1, len(texflow.model_path_history))
-
-        texflow.model_path_history_index = 0
-        model_path_2 = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
-        texflow.model_path_history[0].model_path = model_path_2
-        texflow.model_path_history[0].controlnet_model_path = (
-            "hf-internal-testing/tiny-controlnet-sdxl"
-        )
-
-        bpy.ops.texflow.apply_model_history()
-
-        self.assertEqual(model_path_2, texflow.current_model_path.model_path)
+        bpy.ops.texflow.render_depth_image(height=16, width=16)

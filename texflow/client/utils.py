@@ -1,18 +1,24 @@
 import numpy as np
-import torch
+from PIL import Image
 import bpy
 
 
-def image_to_tensor(image: bpy.types.Image):
+def image_to_arr(image: bpy.types.Image):
     width = image.size[0]
     height = image.size[1]
     channels = image.channels
 
-    arr = np.array(image.pixels[:], dtype=np.float32)
+    arr = np.array(image.pixels[:], dtype=np.float16)
     arr = arr.reshape((height, width, channels))
-    return torch.from_numpy(arr)
+    return arr
 
 
 def select_obj(obj):
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
+
+
+def to_tiff(arr: np.ndarray):
+    arr = np.clip(arr, 0, 1)
+    arr = (arr * 2**16).astype(np.uint16)
+    return Image.fromarray(arr, "I;16")
