@@ -39,6 +39,17 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
 
 
+class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin):
+    bl_label = "Connect to ComfyUI"
+    bl_idname = "texflow.connect_to_comfy"
+    bl_description = "Connect to ComfyUI"
+    task_name = "texflow.connect_to_comfy"
+
+    async def async_execute(self, context):
+        texflow_state = get_texflow_state()
+        texflow = context.scene.texflow
+
+
 class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "RenderDepthImage"
     bl_idname = "texflow.render_depth_image"
@@ -63,7 +74,6 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             and context.active_object is not None
             and context.active_object.type == "MESH"
             and texflow.camera is not None
-            and texflow.comfyui_url is not None
         )
 
     async def async_execute(self, context):
@@ -143,12 +153,3 @@ class TexflowPanel(bpy.types.Panel):
         layout.prop(texflow, "width")
 
         layout.separator()
-        row = layout.row()
-        row.operator(StartGenerationOperator.bl_idname)
-
-        row = layout.row()
-        row.progress(
-            text=f"{texflow_state.current_step}/{texflow.steps}",
-            factor=texflow_state.current_step / texflow.steps,
-        )
-        row.operator(InterruptGenerationOperator.bl_idname, text="Interrupt")

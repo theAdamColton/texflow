@@ -1,3 +1,4 @@
+import uuid
 from aiohttp.test_utils import AioHTTPTestCase
 import asyncio
 from aiohttp import web
@@ -147,8 +148,10 @@ class TestClientServer(AioHTTPTestCase):
         app.add_routes(routes)
         return app
 
+    async def test_connect(self):
+        pass
+
     async def test_render_depth_map(self):
-        await self.asyncSetUp()
         texflow = bpy.context.scene.texflow
         texflow.comfyui_url = str(self.client.make_url(""))
         bpy.ops.mesh.primitive_ico_sphere_add()
