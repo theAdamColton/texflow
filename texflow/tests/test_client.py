@@ -1,4 +1,5 @@
 from aiohttp.test_utils import AioHTTPTestCase
+import asyncio
 from aiohttp import web
 import numpy as np
 import io
@@ -14,11 +15,10 @@ from ..client.utils import select_obj
 from ..client.ui import get_texflow_state
 from ..client import register, unregister
 from ..tests.utils import TestCase, save_image
-from ..client.utils import to_tiff
+from ..client.utils import to_image16
 
 
 def _setUpTexflow():
-    print("SETUP")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     try:
         unregister()
@@ -115,19 +115,19 @@ class TestClient(TestCase):
 
     def test_save_tiff(self):
         arr = np.random.random((32, 32))
-        im = to_tiff(arr)
+        im = to_image16(arr)
         rec_arr = np.asarray(im) / 2**16
         self.assertTrue(np.allclose(arr, rec_arr, 1e-4, 1e-4))
 
 
 class TestClientServer(AioHTTPTestCase):
     async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
         _setUpTexflow()
-        return await super().asyncSetUp()
 
     async def asyncTearDown(self) -> None:
+        await super().asyncTearDown()
         _tearDownTexflow()
-        return await super().asyncTearDown()
 
     async def get_application(self):
         routes = web.RouteTableDef()
@@ -150,4 +150,16 @@ class TestClientServer(AioHTTPTestCase):
     async def test_render_depth_map(self):
         await self.asyncSetUp()
         texflow = bpy.context.scene.texflow
+        texflow.comfyui_url = str(self.client.make_url(""))
+        bpy.ops.mesh.primitive_ico_sphere_add()
+        obj = bpy.context.object
+        bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
+        camera = bpy.context.active_object
+        texflow.camera = camera
+        select_obj(obj)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
         bpy.ops.texflow.render_depth_image(height=16, width=16)
+
+        # TODO hacky test sleep
+        await asyncio.sleep(4)

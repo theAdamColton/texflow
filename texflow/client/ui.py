@@ -3,7 +3,7 @@ import aiohttp
 import io
 import bpy
 
-from .utils import to_tiff
+from .utils import to_image16
 from .camera import ensure_temp_camera
 from .uv import uv_proj
 from ..state import TexflowState
@@ -35,7 +35,7 @@ class TexflowProperties(bpy.types.PropertyGroup):
     comfyui_url: bpy.props.StringProperty(
         name="URL",
         description="URL of ComfyUI server",
-        default="127.0.0.1:8188",
+        default="http://127.0.0.1:8188",
     )
 
 
@@ -63,6 +63,7 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
             and context.active_object is not None
             and context.active_object.type == "MESH"
             and texflow.camera is not None
+            and texflow.comfyui_url is not None
         )
 
     async def async_execute(self, context):
@@ -89,24 +90,30 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         # controlnet uses an inverted depth map
         depth_map = 1 - depth_map
-        depth_image = to_tiff(depth_map)
+        depth_image = to_image16(depth_map)
 
         depth_image_bytes = io.BytesIO()
-        depth_image.save(depth_image_bytes)
-        depth_image_bytes.seek(0)
+        depth_image.save(depth_image_bytes, format="tiff")
+        depth_image_bytes = depth_image_bytes.getvalue()
 
-        post_data = {
-            "image": {
-                "file": depth_image_bytes.read(),
-                "filename": "texflowDepthImage.tiff",
-            },
-            "overwrite": "true",
-        }
-        image_post_url = texflow.url + "/upload/image"
+        form_data = aiohttp.FormData()
+        form_data.add_field(
+            "image",
+            depth_image_bytes,
+            filename="texflow_depth_image.tiff",
+            content_type="image/tiff",
+        )
+        form_data.add_field("overwrite", "true")
 
-        async with aiohttp.ClientSession(timeout=5) as sess:
-            response = await sess.post(image_post_url, json=json.dumps(post_data))
-            print("GOT REPONSE", response)
+        image_post_url = texflow.comfyui_url + "/upload/image"
+
+        async with aiohttp.ClientSession() as sess:
+            async with sess.post(image_post_url, data=form_data) as response:
+                print("GOT REPONSE", response)
+                result = await response.json()
+                print("GOT RESULT", result)
+
+        print("RENDER DEPTH IMAGE DONE!")
 
         self.quit()
 

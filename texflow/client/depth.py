@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import bpy
 
@@ -92,6 +93,6 @@ def render_depth_map(
         scale = max(scale.item(), 1e-5)
         depth_image = (depth_image - min_value) / scale
         depth_image[~occupancy] = 1.0
-        depth_image = depth_image.clamp_(0, 1)
+        depth_image = np.clip(depth_image, 0, 1)
 
     return depth_image, occupancy

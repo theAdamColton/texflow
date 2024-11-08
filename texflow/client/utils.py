@@ -18,7 +18,7 @@ def select_obj(obj):
     obj.select_set(True)
 
 
-def to_tiff(arr: np.ndarray):
+def to_image16(arr: np.ndarray):
     arr = np.clip(arr, 0, 1)
     arr = (arr * 2**16).astype(np.uint16)
     return Image.fromarray(arr, "I;16")
