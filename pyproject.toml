@@ -17,6 +17,7 @@ dev-dependencies = [
     "bpython>=0.24",
     "fake-bpy-module>=20241010",
     "jsonargparse>=4.33.2",
+    "toml>=0.10.2",
 ]
 
 [tool.uv.sources]
