@@ -1,3 +1,4 @@
+import uuid
 import json
 import aiohttp
 import io
@@ -6,7 +7,7 @@ import bpy
 from .utils import to_image16
 from .camera import ensure_temp_camera
 from .uv import uv_proj
-from ..state import TexflowState
+from ..state import TexflowState, TexflowStatus
 from .async_loop import AsyncModalOperatorMixin
 from .depth import render_depth_map
 
@@ -35,7 +36,7 @@ class TexflowProperties(bpy.types.PropertyGroup):
     comfyui_url: bpy.props.StringProperty(
         name="URL",
         description="URL of ComfyUI server",
-        default="http://127.0.0.1:8188",
+        default="127.0.0.1:8188",
     )
 
 
@@ -43,18 +44,41 @@ class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin)
     bl_label = "Connect to ComfyUI"
     bl_idname = "texflow.connect_to_comfy"
     bl_description = "Connect to ComfyUI"
-    task_name = "texflow.connect_to_comfy"
+    async_task_name = "texflow.connect_to_comfy"
 
     async def async_execute(self, context):
         texflow_state = get_texflow_state()
+        assert texflow_state.status != TexflowStatus.CONNECTING
         texflow = context.scene.texflow
+
+        client_id = str(uuid.uuid4())
+        ws_comfyui_url = f"ws://{texflow.comfyui_url}/ws?clientId={client_id}"
+        self.log.info(f"Connecting to {ws_comfyui_url}")
+
+        texflow_state.status = TexflowStatus.CONNECTING
+
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.ws_connect(ws_comfyui_url) as ws:
+                    json = await ws.receive_json()
+                    self.log.info(f"Connected with json response {json}")
+
+                    texflow_state.status = TexflowStatus.READY
+                    texflow_state.client_id = client_id
+
+                    async for msg in ws:
+                        self.log.info(f"Recieved ws msg {msg}")
+        finally:
+            texflow_state.status = TexflowStatus.PENDING
+
+        self.quit()
 
 
 class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     bl_label = "RenderDepthImage"
     bl_idname = "texflow.render_depth_image"
     bl_description = "Render a depth image and send it to comfyui"
-    task_name = "texflow.render_depth_image"
+    async_task_name = "texflow.render_depth_image"
 
     stop_upon_exception = True
 
@@ -115,7 +139,7 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
         )
         form_data.add_field("overwrite", "true")
 
-        image_post_url = texflow.comfyui_url + "/upload/image"
+        image_post_url = f"http://{texflow.comfyui_url}/upload/image"
 
         async with aiohttp.ClientSession() as sess:
             async with sess.post(image_post_url, data=form_data) as response:

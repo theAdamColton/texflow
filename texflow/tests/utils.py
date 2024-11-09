@@ -1,4 +1,4 @@
-import torch
+import numpy as np
 import inspect
 import unittest
 from PIL import Image
@@ -6,12 +6,12 @@ from PIL import Image
 from ..utils import ROOT_PATH
 
 
-def save_image(image: torch.Tensor, path):
+def save_image(image: np.ndarray, path):
     """
     image: h w c
     in range [0,1]
     """
-    image = (image * 255).to(torch.uint8).numpy()
+    image = (image * 255).astype(np.uint8)
     Image.fromarray(image).save(path)
 
 

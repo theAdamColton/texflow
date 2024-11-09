@@ -5,7 +5,12 @@ import logging
 
 from ..state import TexflowState
 from ..utils import DESCRIPTION, VERSION_TUPLE
-from .ui import TexflowProperties, TexflowPanel, RenderDepthImageOperator
+from .ui import (
+    TexflowProperties,
+    TexflowPanel,
+    RenderDepthImageOperator,
+    TexflowConnectToComfyOperator,
+)
 from .async_loop import AsyncLoopModalOperator, AsyncModalOperatorMixin
 
 logging.basicConfig(
@@ -28,6 +33,7 @@ classes = (
     RenderDepthImageOperator,
     TexflowProperties,
     AsyncLoopModalOperator,
+    TexflowConnectToComfyOperator,
 )
 
 

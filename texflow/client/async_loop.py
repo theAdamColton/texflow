@@ -261,7 +261,7 @@ class AsyncModalOperatorMixin:
 
     _state = "INITIALIZING"
     stop_upon_exception = False
-    task_name = None  # Must be implemented in child class
+    async_task_name = None  # Must be implemented in child class
 
     def invoke(self, context, event):
         context.window_manager.modal_handler_add(self)
@@ -325,7 +325,7 @@ class AsyncModalOperatorMixin:
         # Download the previews asynchronously.
         self.signalling_future = future or asyncio.Future()
         self.async_task = asyncio.ensure_future(async_task)
-        task_name = self.task_name
+        task_name = self.async_task_name
         assert task_name is not None
         self.async_task.set_name(task_name)
         self.log.debug("Created new task %r", self.async_task)
@@ -365,13 +365,13 @@ class AsyncModalOperatorMixin:
 
     @classmethod
     def cancel_tasks(cls):
-        assert cls.task_name is not None
+        assert cls.async_task_name is not None
         try:
             tasks = asyncio.all_tasks()
         except:
             tasks = []
 
         for task in tasks:
-            if task.get_name().startswith(cls.task_name):
+            if task.get_name().startswith(cls.async_task_name):
                 cls.log.info("Cancelling task!", task)
                 task.cancel()

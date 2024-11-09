@@ -1,17 +1,20 @@
+import logging
+import aiohttp
+import time
 import uuid
 from aiohttp.test_utils import AioHTTPTestCase
 import asyncio
 from aiohttp import web
 import numpy as np
-import io
 import math
 import time
 import bpy
 import bmesh
 
+from texflow.state import TexflowStatus
+
 from ..client.uv import uv_proj
 from ..client.depth import render_depth_map
-from ..client.async_loop import kick_async_loop
 from ..client.utils import select_obj
 from ..client.ui import get_texflow_state
 from ..client import register, unregister
@@ -122,13 +125,35 @@ class TestClient(TestCase):
 
 
 class TestClientServer(AioHTTPTestCase):
+    depth_image_post = None
+    sockets = dict()
+    url = None
+
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+
+        self.depth_image_post = None
+        self.sockets = dict()
+        self.url = f"127.0.0.1:{self.server.port}"
         _setUpTexflow()
 
     async def asyncTearDown(self) -> None:
-        await super().asyncTearDown()
+        self.depth_image_post = None
+        self.sockets = dict()
+        self.url = None
         _tearDownTexflow()
+
+        await super().asyncTearDown()
+
+    async def send_json(self, event, data, sid=None):
+        message = {"type": event, "data": data}
+
+        if sid is None:
+            sockets = list(self.sockets.values())
+            for ws in sockets:
+                await ws.send_json(message)
+        elif sid in self.sockets:
+            await self.sockets[sid].send_json(message)
 
     async def get_application(self):
         routes = web.RouteTableDef()
@@ -136,6 +161,7 @@ class TestClientServer(AioHTTPTestCase):
         @routes.post("/upload/image")
         async def upload_image(request):
             post = await request.post()
+            self.depth_image_post = post
             return web.json_response(
                 {
                     "name": "dummyfilename",
@@ -144,16 +170,51 @@ class TestClientServer(AioHTTPTestCase):
                 }
             )
 
+        @routes.get("/ws")
+        async def websocket_handler(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            sid = request.rel_url.query.get("clientId", "")
+            if sid:
+                # Reusing existing session, remove old
+                self.sockets.pop(sid, None)
+            else:
+                sid = uuid.uuid4().hex
+
+            self.sockets[sid] = ws
+
+            try:
+                # Send initial state to the new client
+                await self.send_json("status", {"status": dict(), "sid": sid}, sid)
+
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.ERROR:
+                        logging.warning(
+                            "ws connection closed with exception %s" % ws.exception()
+                        )
+            finally:
+                self.sockets.pop(sid, None)
+            return ws
+
         app = web.Application()
         app.add_routes(routes)
         return app
 
-    async def test_connect(self):
-        pass
+    async def test_connection_completes(self):
+        texflow = bpy.context.scene.texflow
+        texflow.comfyui_url = self.url
+        bpy.ops.texflow.connect_to_comfy()
+
+        async with asyncio.timeout(10):
+            while get_texflow_state().status == TexflowStatus.PENDING:
+                await asyncio.sleep(0.1)
+
+        self.assertEqual(get_texflow_state().status, TexflowStatus.READY)
+        self.assertIsNotNone(get_texflow_state().client_id)
 
     async def test_render_depth_map(self):
         texflow = bpy.context.scene.texflow
-        texflow.comfyui_url = str(self.client.make_url(""))
+        texflow.comfyui_url = self.url
         bpy.ops.mesh.primitive_ico_sphere_add()
         obj = bpy.context.object
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
@@ -164,5 +225,8 @@ class TestClientServer(AioHTTPTestCase):
         bpy.ops.mesh.select_all(action="SELECT")
         bpy.ops.texflow.render_depth_image(height=16, width=16)
 
-        # TODO hacky test sleep
-        await asyncio.sleep(4)
+        async with asyncio.timeout(10):
+            while self.depth_image_post is None:
+                await asyncio.sleep(0.1)
+
+        self.assertIn("image", self.depth_image_post)
