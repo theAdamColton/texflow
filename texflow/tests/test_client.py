@@ -209,9 +209,9 @@ class TestClientServer(AioHTTPTestCase):
         # needed for nested async loops
         nest_asyncio.apply(async_loop_mgr.loop)
 
-        async with asyncio.timeout(5):
+        async with asyncio.timeout(2):
             while get_texflow_state().status != TexflowStatus.READY:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1 / 100)
                 async_loop_mgr.kick()
 
         self.assertEqual(get_texflow_state().status, TexflowStatus.READY)
@@ -220,6 +220,7 @@ class TestClientServer(AioHTTPTestCase):
     async def test_render_depth_map_op(self):
         texflow = bpy.context.scene.texflow
         texflow.comfyui_url = self.url
+
         bpy.ops.mesh.primitive_ico_sphere_add()
         obj = bpy.context.object
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
@@ -230,6 +231,7 @@ class TestClientServer(AioHTTPTestCase):
         bpy.ops.mesh.select_all(action="SELECT")
         texflow.height = 16
         texflow.width = 16
+
         bpy.ops.texflow.render_depth_image()
 
         async_loop_mgr = TexflowAsyncOperator.get_async_manager()
@@ -238,9 +240,42 @@ class TestClientServer(AioHTTPTestCase):
         # needed for nested async loops
         nest_asyncio.apply(async_loop_mgr.loop)
 
-        async with asyncio.timeout(5):
+        async with asyncio.timeout(2):
             while self.depth_image_post is None:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1 / 100)
                 async_loop_mgr.kick()
 
         self.assertIn("image", self.depth_image_post)
+
+    async def test_connect_and_then_render(self):
+        texflow = bpy.context.scene.texflow
+        texflow.comfyui_url = self.url
+        bpy.ops.texflow.connect_to_comfy()
+
+        async_loop_mgr = TexflowAsyncOperator.get_async_manager()
+
+        self.assertIsNotNone(async_loop_mgr.loop)
+        # needed for nested async loops
+        nest_asyncio.apply(async_loop_mgr.loop)
+
+        async with asyncio.timeout(2):
+            while get_texflow_state().status != TexflowStatus.READY:
+                await asyncio.sleep(1 / 100)
+                async_loop_mgr.kick()
+
+        bpy.ops.mesh.primitive_ico_sphere_add()
+        obj = bpy.context.object
+        bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
+        camera = bpy.context.active_object
+        texflow.camera = camera
+        select_obj(obj)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        texflow.height = 16
+        texflow.width = 16
+
+        bpy.ops.texflow.render_depth_image()
+        async with asyncio.timeout(2):
+            while self.depth_image_post is None:
+                await asyncio.sleep(1 / 100)
+                async_loop_mgr.kick()

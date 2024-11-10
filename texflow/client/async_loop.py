@@ -120,9 +120,13 @@ class AsyncModalOperatorMixin:
     """
 
     async_loop_manager_name: str = NotImplemented
+    bl_idname = NotImplemented
 
     timer = None
-    logger = logging.getLogger(__name__ + ".AsyncLoopModalOperator")
+
+    @property
+    def logger(self):
+        return logging.getLogger(f"AsyncLoopModalOperator.{self.bl_idname}")
 
     async def async_execute(self, context):
         raise NotImplementedError()
