@@ -8,7 +8,7 @@ from .ui import (
     TexflowPanel,
     RenderDepthImageOperator,
     TexflowAsyncOperator,
-    TexflowConnectToComfyOperator,
+    ConnectToComfyOperator,
 )
 
 
@@ -31,7 +31,7 @@ classes = (
     TexflowPanel,
     RenderDepthImageOperator,
     TexflowProperties,
-    TexflowConnectToComfyOperator,
+    ConnectToComfyOperator,
 )
 
 

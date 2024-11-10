@@ -1,3 +1,4 @@
+import logging
 import uuid
 import aiohttp
 import io
@@ -62,7 +63,7 @@ class TexflowAsyncOperator(AsyncModalOperatorMixin):
         return AsyncLoopManager.register(TexflowAsyncOperator.async_loop_manager_name)
 
 
-class TexflowConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
+class ConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
     bl_label = "Connect to ComfyUI"
     bl_idname = "texflow.connect_to_comfy"
     bl_description = "Connect to ComfyUI"
@@ -74,7 +75,7 @@ class TexflowConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
 
         client_id = str(uuid.uuid4())
         ws_comfyui_url = f"ws://{texflow.comfyui_url}/ws?clientId={client_id}"
-        self.logger.info(f"Connecting to {ws_comfyui_url}")
+        logging.info(f"Connecting to {ws_comfyui_url}")
 
         texflow_state.status = TexflowStatus.CONNECTING
 
@@ -82,14 +83,14 @@ class TexflowConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
             async with aiohttp.ClientSession() as sess:
                 async with sess.ws_connect(ws_comfyui_url) as ws:
                     json = await ws.receive_json()
-                    self.logger.info(f"Connected with json response {json}")
+                    logging.info(f"Connected with json response {json}")
 
                     texflow_state.status = TexflowStatus.READY
                     ui_update(None, context)
                     texflow_state.client_id = client_id
 
                     async for msg in ws:
-                        self.logger.info(f"Recieved ws msg {msg}")
+                        logging.info(f"Recieved ws msg {msg}")
         finally:
             texflow_state.status = TexflowStatus.PENDING
 
@@ -151,13 +152,13 @@ class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
 
         image_post_url = f"http://{texflow.comfyui_url}/upload/image"
 
-        self.logger.info(f"Posting depth image to {image_post_url}")
+        logging.info(f"Posting depth image to {image_post_url}")
 
         async with aiohttp.ClientSession() as sess:
             async with sess.post(image_post_url, data=form_data) as response:
-                self.logger.info(f"Got post response {response}")
+                logging.info(f"Got post response {response}")
                 result = await response.json()
-                self.logger.info(f"Got post result {result}")
+                logging.info(f"Got post result {result}")
 
         print("RENDER DEPTH IMAGE DONE!")
 
@@ -190,7 +191,7 @@ class TexflowPanel(bpy.types.Panel):
 
         row = layout.row()
         row.enabled = texflow_state.status != TexflowStatus.CONNECTING
-        row.operator(TexflowConnectToComfyOperator.bl_idname)
+        row.operator(ConnectToComfyOperator.bl_idname)
 
         layout.separator(factor=2)
 

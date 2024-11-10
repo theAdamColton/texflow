@@ -65,11 +65,13 @@ class AsyncLoopManager:
             self.logger.debug(f"Closed loop")
 
     def _handle_task_done(self, task: asyncio.Task):
+        self.logger.info(f"Task done {task}")
         self.tasks.discard(task)
         try:
-            task.exception()
+            e = task.exception()
         except asyncio.exceptions.CancelledError:
-            pass
+            return
+        raise e
 
     def create_task(self, coro) -> asyncio.Task:
         """Creates and tracks a new task in the loop."""
@@ -120,13 +122,7 @@ class AsyncModalOperatorMixin:
     """
 
     async_loop_manager_name: str = NotImplemented
-    bl_idname = NotImplemented
-
     timer = None
-
-    @property
-    def logger(self):
-        return logging.getLogger(f"AsyncLoopModalOperator.{self.bl_idname}")
 
     async def async_execute(self, context):
         raise NotImplementedError()
@@ -140,9 +136,7 @@ class AsyncModalOperatorMixin:
         async_loop_manager.create_task(self.async_execute(context))
 
         if async_loop_manager.running:
-            self.logger.info(
-                f"AsyncLoopManager {async_loop_manager.name} already running"
-            )
+            logging.info(f"AsyncLoopManager {async_loop_manager.name} already running")
             return {"PASS_THROUGH"}
 
         context.window_manager.modal_handler_add(self)
@@ -164,7 +158,7 @@ class AsyncModalOperatorMixin:
         if stop_after_this_kick:
             async_loop_manager.stop()
             context.window_manager.event_timer_remove(self.timer)
-            self.logger.debug("Stopped asyncio loop kicking")
+            logging.debug("Stopped asyncio loop kicking")
             return {"FINISHED"}
 
         return {"RUNNING_MODAL"}

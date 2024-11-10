@@ -279,3 +279,5 @@ class TestClientServer(AioHTTPTestCase):
             while self.depth_image_post is None:
                 await asyncio.sleep(1 / 100)
                 async_loop_mgr.kick()
+
+        self.assertIn("image", self.depth_image_post)
