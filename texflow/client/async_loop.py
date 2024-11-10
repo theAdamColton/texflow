@@ -71,7 +71,9 @@ class AsyncLoopManager:
             e = task.exception()
         except asyncio.exceptions.CancelledError:
             return
-        raise e
+
+        if e is not None:
+            raise e
 
     def create_task(self, coro) -> asyncio.Task:
         """Creates and tracks a new task in the loop."""
