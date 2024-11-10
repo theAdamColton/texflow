@@ -210,7 +210,7 @@ class TestClientServer(AioHTTPTestCase):
         self.assertEqual(get_texflow_state().status, TexflowStatus.READY)
         self.assertIsNotNone(get_texflow_state().client_id)
 
-    async def test_render_depth_map(self):
+    async def test_render_depth_map_op(self):
         texflow = bpy.context.scene.texflow
         texflow.comfyui_url = self.url
         bpy.ops.mesh.primitive_ico_sphere_add()
@@ -221,7 +221,9 @@ class TestClientServer(AioHTTPTestCase):
         select_obj(obj)
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.texflow.render_depth_image(height=16, width=16)
+        texflow.height = 16
+        texflow.width = 16
+        bpy.ops.texflow.render_depth_image()
 
         async with asyncio.timeout(10):
             while self.depth_image_post is None:

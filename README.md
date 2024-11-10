@@ -8,5 +8,6 @@ It allows artists to use AI image generation models to paint textures onto the s
 
 * Only relative imports are allowed
 * texflow/client/__init__.py is the blender entry
+* texflow/__init__.py is deleted when building
 * All inheritors of the Async Mixin class must have a task name that starts with the prefix "texflow"
 

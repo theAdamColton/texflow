@@ -35,8 +35,23 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
     comfyui_url: bpy.props.StringProperty(
         name="URL",
-        description="URL of ComfyUI server",
+        description="URL of the ComfyUI server",
         default="127.0.0.1:8188",
+    )
+
+    height: bpy.props.IntProperty(
+        description="Height of generated depth map",
+        min=16,
+        max=8192,
+        default=512,
+        name="Height",
+    )
+    width: bpy.props.IntProperty(
+        description="Width of generated depth map",
+        min=16,
+        max=8192,
+        default=512,
+        name="Width",
     )
 
 
@@ -53,7 +68,7 @@ class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin)
 
         client_id = str(uuid.uuid4())
         ws_comfyui_url = f"ws://{texflow.comfyui_url}/ws?clientId={client_id}"
-        self.log.info(f"Connecting to {ws_comfyui_url}")
+        self.logger.info(f"Connecting to {ws_comfyui_url}")
 
         texflow_state.status = TexflowStatus.CONNECTING
 
@@ -61,13 +76,14 @@ class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin)
             async with aiohttp.ClientSession() as sess:
                 async with sess.ws_connect(ws_comfyui_url) as ws:
                     json = await ws.receive_json()
-                    self.log.info(f"Connected with json response {json}")
+                    self.logger.info(f"Connected with json response {json}")
 
                     texflow_state.status = TexflowStatus.READY
+                    ui_update(None, context)
                     texflow_state.client_id = client_id
 
                     async for msg in ws:
-                        self.log.info(f"Recieved ws msg {msg}")
+                        self.logger.info(f"Recieved ws msg {msg}")
         finally:
             texflow_state.status = TexflowStatus.PENDING
 
@@ -75,19 +91,12 @@ class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin)
 
 
 class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
-    bl_label = "RenderDepthImage"
+    bl_label = "Render Depth Image"
     bl_idname = "texflow.render_depth_image"
     bl_description = "Render a depth image and send it to comfyui"
     async_task_name = "texflow.render_depth_image"
 
     stop_upon_exception = True
-
-    height: bpy.props.IntProperty(
-        description="Height of generated depth map", min=16, max=8192, default=512
-    )
-    width: bpy.props.IntProperty(
-        description="Width of generated depth map", min=16, max=8192, default=512
-    )
 
     @classmethod
     def poll(cls, context):
@@ -103,8 +112,8 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
     async def async_execute(self, context):
         texflow_state = get_texflow_state()
         texflow = context.scene.texflow
-        height = self.height
-        width = self.width
+        height = texflow.height
+        width = texflow.width
         camera_obj = texflow.camera
         obj = context.active_object
 
@@ -141,11 +150,13 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
 
         image_post_url = f"http://{texflow.comfyui_url}/upload/image"
 
+        self.logger.info(f"Posting depth image to {image_post_url}")
+
         async with aiohttp.ClientSession() as sess:
             async with sess.post(image_post_url, data=form_data) as response:
-                print("GOT REPONSE", response)
+                self.logger.info(f"Got post response {response}")
                 result = await response.json()
-                print("GOT RESULT", result)
+                self.logger.info(f"Got post result {result}")
 
         print("RENDER DEPTH IMAGE DONE!")
 
@@ -167,13 +178,25 @@ class TexflowPanel(bpy.types.Panel):
 
         texflow_status = texflow_state.status
 
-        layout.separator()
+        layout.label(text="ComfyUI Settings:")
+        layout.prop(texflow, "comfyui_url")
+
+        if texflow_state.status == TexflowStatus.PENDING:
+            label_text = "Not connected."
+        elif texflow_state.status == TexflowStatus.CONNECTING:
+            label_text = "Connecting..."
+        elif texflow_state.status == TexflowStatus.READY:
+            label_text = "Connected."
+        layout.label(text=label_text)
+
+        row = layout.row()
+        row.enabled = texflow_state.status != TexflowStatus.CONNECTING
+        row.operator(TexflowConnectToComfyOperator.bl_idname)
+
+        layout.separator(factor=2)
+
         layout.prop_search(texflow, "camera", bpy.data, "objects")
-
-        layout.label(text="Prompt:")
-        layout.prop(texflow, "prompt", text="")
-
         layout.prop(texflow, "height")
         layout.prop(texflow, "width")
-
-        layout.separator()
+        row = layout.row()
+        row.operator(RenderDepthImageOperator.bl_idname)

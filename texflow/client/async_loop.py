@@ -196,7 +196,7 @@ class AsyncLoopModalOperator(bpy.types.Operator):
     bl_label = "Runs the asyncio main loop"
 
     timer = None
-    log = logging.getLogger(__name__ + ".AsyncLoopModalOperator")
+    logger = logging.getLogger(__name__ + ".AsyncLoopModalOperator")
 
     def __del__(self):
         global _loop_kicking_operator_running
@@ -213,7 +213,7 @@ class AsyncLoopModalOperator(bpy.types.Operator):
         global _loop_kicking_operator_running
 
         if _loop_kicking_operator_running:
-            self.log.debug("Another loop-kicking operator is already running.")
+            self.logger.debug("Another loop-kicking operator is already running.")
             return {"PASS_THROUGH"}
 
         context.window_manager.modal_handler_add(self)
@@ -236,7 +236,7 @@ class AsyncLoopModalOperator(bpy.types.Operator):
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
 
-        # self.log.debug('KICKING LOOP')
+        self.logger.debug("KICKING LOOP")
         try:
             stop_after_this_kick = kick_async_loop()
         except:
@@ -245,7 +245,7 @@ class AsyncLoopModalOperator(bpy.types.Operator):
             context.window_manager.event_timer_remove(self.timer)
             _loop_kicking_operator_running = False
 
-            self.log.debug("Stopped asyncio loop kicking")
+            self.logger.debug("Stopped asyncio loop kicking")
             return {"FINISHED"}
 
         return {"RUNNING_MODAL"}
@@ -257,11 +257,14 @@ class AsyncModalOperatorMixin:
     signalling_future = (
         None  # asyncio future for signalling that we want to cancel everything.
     )
-    log = logging.getLogger("%s.AsyncModalOperatorMixin" % __name__)
+    async_task_name = None  # Must be implemented in child class
+
+    @property
+    def logger(self):
+        return logging.getLogger(f"AsyncModalOperatorMixin('{self.async_task_name}')")
 
     _state = "INITIALIZING"
     stop_upon_exception = False
-    async_task_name = None  # Must be implemented in child class
 
     def invoke(self, context, event):
         context.window_manager.modal_handler_add(self)
@@ -269,7 +272,7 @@ class AsyncModalOperatorMixin:
             1 / 15, window=context.window
         )
 
-        self.log.info("Starting")
+        self.logger.info("Starting")
         self._new_async_task(self.async_execute(context))
 
         return {"RUNNING_MODAL"}
@@ -279,7 +282,7 @@ class AsyncModalOperatorMixin:
 
         Implement in a subclass.
         """
-        return
+        raise NotImplementedError()
 
     def quit(self):
         """Signals the state machine to stop this operator from running."""
@@ -295,7 +298,7 @@ class AsyncModalOperatorMixin:
             ex = task.exception()
             if ex is not None:
                 self._state = "EXCEPTION"
-                self.log.error("Exception while running task: %s", ex)
+                self.logger.error("Exception while running task: %s", ex)
                 if self.stop_upon_exception:
                     self.quit()
                     self._finish(context)
@@ -317,7 +320,7 @@ class AsyncModalOperatorMixin:
         self, async_task: typing.Coroutine, future: asyncio.Future = None
     ):
         """Stops the currently running async task, and starts another one."""
-        self.log.debug(
+        self.logger.debug(
             "Setting up a new task %r, so any existing task must be stopped", async_task
         )
         self._stop_async_task()
@@ -328,40 +331,42 @@ class AsyncModalOperatorMixin:
         task_name = self.async_task_name
         assert task_name is not None
         self.async_task.set_name(task_name)
-        self.log.debug("Created new task %r", self.async_task)
+        self.logger.debug("Created new task %r", self.async_task)
 
         # Start the async manager so everything happens.
         ensure_async_loop()
 
     def _stop_async_task(self):
-        self.log.debug("Stopping async task")
+        self.logger.debug("Stopping async task")
         if self.async_task is None:
-            self.log.debug("No async task, trivially stopped")
+            self.logger.debug("No async task, trivially stopped")
             return
 
         # Signal that we want to stop.
         self.async_task.cancel()
         if not self.signalling_future.done():
-            self.log.info("Signalling that we want to cancel anything that's running.")
+            self.logger.info(
+                "Signalling that we want to cancel anything that's running."
+            )
             self.signalling_future.cancel()
 
         # Wait until the asynchronous task is done.
         if not self.async_task.done():
-            self.log.info("blocking until async task is done.")
+            self.logger.info("blocking until async task is done.")
             loop = asyncio.get_event_loop()
             try:
                 loop.run_until_complete(self.async_task)
             except asyncio.CancelledError:
-                self.log.info("Asynchronous task was cancelled")
+                self.logger.info("Asynchronous task was cancelled")
                 return
 
         # noinspection PyBroadException
         try:
             self.async_task.result()  # This re-raises any exception of the task.
         except asyncio.CancelledError:
-            self.log.info("Asynchronous task was cancelled")
+            self.logger.info("Asynchronous task was cancelled")
         except Exception:
-            self.log.exception("Exception from asynchronous task")
+            self.logger.exception("Exception from asynchronous task")
 
     @classmethod
     def cancel_tasks(cls):
@@ -373,5 +378,5 @@ class AsyncModalOperatorMixin:
 
         for task in tasks:
             if task.get_name().startswith(cls.async_task_name):
-                cls.log.info("Cancelling task!", task)
+                logging.info("Cancelling task!", task)
                 task.cancel()

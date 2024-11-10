@@ -463,6 +463,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "numpy" },
     { name = "pillow" },
+    { name = "toml" },
     { name = "websockets" },
 ]
 
@@ -472,7 +473,6 @@ dev = [
     { name = "bpython" },
     { name = "fake-bpy-module" },
     { name = "jsonargparse" },
-    { name = "toml" },
 ]
 
 [package.metadata]
@@ -480,6 +480,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.10.10" },
     { name = "numpy", specifier = "==1.26.3" },
     { name = "pillow", specifier = ">=10.2.0" },
+    { name = "toml", specifier = ">=0.10.2" },
     { name = "websockets", specifier = ">=13.1" },
 ]
 
@@ -489,7 +490,6 @@ dev = [
     { name = "bpython", specifier = ">=0.24" },
     { name = "fake-bpy-module", specifier = ">=20241010" },
     { name = "jsonargparse", specifier = ">=4.33.2" },
-    { name = "toml", specifier = ">=0.10.2" },
 ]
 
 [[package]]
