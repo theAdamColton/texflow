@@ -85,12 +85,18 @@ class ConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
                     json = await ws.receive_json()
                     logging.info(f"Connected with json response {json}")
 
+                    client_id = json["data"]["sid"]
+
                     texflow_state.status = TexflowStatus.READY
-                    ui_update(None, context)
                     texflow_state.client_id = client_id
+
+                    ui_update(None, context)
 
                     async for msg in ws:
                         logging.info(f"Recieved ws msg {msg}")
+        except Exception as e:
+            self.report({"WARNING"}, f"Could not connect to comfyui {e}")
+            raise e
         finally:
             texflow_state.status = TexflowStatus.PENDING
 

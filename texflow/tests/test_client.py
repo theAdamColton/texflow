@@ -119,8 +119,34 @@ class TestClient(TestCase):
     def test_save_tiff(self):
         arr = np.random.random((32, 32))
         im = to_image16(arr)
-        rec_arr = np.asarray(im) / 2**16
+        rec_arr = np.asarray(im) / (2**16 - 1)
         self.assertTrue(np.allclose(arr, rec_arr, 1e-4, 1e-4))
+
+        arr = np.ones((32, 32))
+        im = to_image16(arr)
+        rec_arr = np.asarray(im) / (2**16 - 1)
+        self.assertTrue(np.allclose(arr, rec_arr, 1e-4, 1e-4))
+
+    def test_save_load_depth_tiff(self):
+        bpy.ops.mesh.primitive_ico_sphere_add()
+        obj = bpy.context.object
+        select_obj(obj)
+        bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
+        camera = bpy.context.active_object
+        height, width = 256, 256
+
+        extra_background_distance = 0.0
+        depth_map, occupancy = render_depth_map(
+            obj,
+            camera,
+            height=height,
+            width=width,
+            extra_background_distance=extra_background_distance,
+        )
+
+        im = to_image16(depth_map)
+        rec_depth_map = np.asarray(im) / (2**16 - 1)
+        self.assertTrue(np.allclose(depth_map, rec_depth_map, 1e-4, 1e-4))
 
 
 class TestClientServer(AioHTTPTestCase):

@@ -19,6 +19,9 @@ def select_obj(obj):
 
 
 def to_image16(arr: np.ndarray):
+    """
+    arr contains values between 0.0 and 1.0
+    """
     arr = np.clip(arr, 0, 1)
-    arr = (arr * 2**16).astype(np.uint16)
+    arr = (arr * (2**16 - 1)).astype(np.uint16)
     return Image.fromarray(arr, "I;16")
