@@ -210,7 +210,7 @@ class TestClientServer(AioHTTPTestCase):
         nest_asyncio.apply(async_loop_mgr.loop)
 
         async with asyncio.timeout(5):
-            while get_texflow_state().status == TexflowStatus.PENDING:
+            while get_texflow_state().status != TexflowStatus.READY:
                 await asyncio.sleep(0.1)
                 async_loop_mgr.kick()
 
