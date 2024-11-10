@@ -1,5 +1,3 @@
-import gc
-import asyncio
 import bpy
 import logging
 
@@ -9,9 +7,10 @@ from .ui import (
     TexflowProperties,
     TexflowPanel,
     RenderDepthImageOperator,
+    TexflowAsyncOperator,
     TexflowConnectToComfyOperator,
 )
-from .async_loop import AsyncLoopModalOperator, AsyncModalOperatorMixin
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -32,23 +31,13 @@ classes = (
     TexflowPanel,
     RenderDepthImageOperator,
     TexflowProperties,
-    AsyncLoopModalOperator,
     TexflowConnectToComfyOperator,
 )
 
 
-def _stop_all_tasks():
-    try:
-        tasks = asyncio.all_tasks()
-    except:
-        return
-    for task in tasks:
-        if task.get_name().startswith("texflow"):
-            task.cancel()
-
-
 def register():
-    _stop_all_tasks()
+    async_loop_mgr = TexflowAsyncOperator.get_async_manager()
+    async_loop_mgr.unregister()
     bpy.app.driver_namespace["texflow_state"] = TexflowState()
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -56,7 +45,8 @@ def register():
 
 
 def unregister():
-    _stop_all_tasks()
+    async_loop_mgr = TexflowAsyncOperator.get_async_manager()
+    async_loop_mgr.unregister()
     for cls in classes:
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.texflow

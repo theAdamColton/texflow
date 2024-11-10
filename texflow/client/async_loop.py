@@ -1,382 +1,166 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
-
-"""
-# Manages the asyncio loop. (Copied from Blender Cloud plugin with minor changes)
-
-
-
-
-# 4 examples of operators that move the 3d cursor to scene center: 
-# one syncronous for reference purposes, other three do the same thing asynchronously
-# Test_OT_Async and Test_OT_NoBlock do the same thing, different approach
-
-import bpy
 import asyncio
-
-
-class Test_OT_Operator(bpy.types.Operator):
-    bl_idname = "view3d.sample_1"
-    bl_label = "Synchronous operator that acts immediatly"
-    bl_description = "Center 3d cursor immediately"
-
-    def execute(self, context):
-        bpy.ops.view3D.snap_cursor_to_center()
-        return {'FINISHED'}
-
-class Test_OT_Mixin(bpy.types.Operator, async_loop.AsyncModalOperatorMixin):
-    bl_idname = "view3d.sample_2"
-    bl_label = "Asynchronous operator using AsyncModalOperatorMixin"
-    bl_description = "Center 3d cursor after 3s"
-
-    async def async_execute(self, context):
-        await asyncio.sleep(3)
-        bpy.ops.view3D.snap_cursor_to_center()
-        self.quit()
-
-class Test_OT_Block(bpy.types.Operator):
-    bl_idname = "view3d.sample_3"
-    bl_label = "Asynchronous _blocking_ operator as suggested in blender_cloud readme"
-    bl_description = "Center 3d cursor after 3s"
-
-    async def act(self):
-        await asyncio.sleep(3)
-        bpy.ops.view3D.snap_cursor_to_center()
-
-    def execute(self, context):
-        loop = asyncio.get_event_loop()
-        res = loop.run_until_complete(self.act())
-        return {'FINISHED'}
-
-class Test_OT_NoBlock(bpy.types.Operator):
-    bl_idname = "view3d.sample_4"
-    bl_label = "Asynchronous non-blocking operator as suggested in blender_cloud readme"
-    bl_description = "Center 3d cursor after 3s"
-
-    async def act(self):
-        await asyncio.sleep(3)
-        bpy.ops.view3D.snap_cursor_to_center()
-
-    def execute(self, context):
-        async_task = asyncio.ensure_future(self.act())
-        ## It's also possible to handle the task when it's done like so:
-        #async_task.add_done_callback(done_callback)
-        async_loop.ensure_async_loop()
-        return {'FINISHED'}
-"""
-
-import asyncio
-import traceback
-import concurrent.futures
 import logging
-import gc
-import typing
 
 import bpy
 
-log = logging.getLogger(__name__)
 
-# Keeps track of whether a loop-kicking operator is already running.
-_loop_kicking_operator_running = False
+class AsyncLoopManager:
+    def __init__(self, name="async-loop-manager"):
+        self.name = name
+        self.logger = logging.getLogger(f"AsyncLoopManager.{name}")
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.tasks: set[asyncio.Task] = set()
+        self._running = False
+
+    @staticmethod
+    def _format_key(name):
+        key = f"AsyncLoopManager_{name}"
+        return key
+
+    @staticmethod
+    def register(name="async-loop-manager"):
+        key = AsyncLoopManager._format_key(name)
+
+        if key in bpy.app.driver_namespace:
+            return bpy.app.driver_namespace[key]
+
+        mgr = AsyncLoopManager(name)
+        bpy.app.driver_namespace[key] = mgr
+
+        return mgr
+
+    def unregister(self):
+        self.stop()
+        key = AsyncLoopManager._format_key(self.name)
+        if key in bpy.app.driver_namespace:
+            del bpy.app.driver_namespace[key]
+
+    def _maybe_create_loop(self):
+        if self.loop is None:
+            self.loop = asyncio.new_event_loop()
+            self.logger.debug(f"Created new event loop")
+
+    def _cancel_all_tasks(self) -> None:
+        """Cancels all running tasks."""
+        if not self.tasks:
+            return
+
+        for task in self.tasks:
+            task.cancel()
+
+        if self.loop and not self.loop.is_closed():
+            # Run loop one last time to process cancellations
+            self.loop.run_until_complete(
+                asyncio.gather(*self.tasks, return_exceptions=True)
+            )
+        self.tasks.clear()
+
+    def _close_loop(self):
+        """Closes the event loop and cleans up tasks."""
+        if self.loop and not self.loop.is_closed():
+            self._cancel_all_tasks()
+            self.loop.stop()
+            self.loop.close()
+            self.loop = None
+            self.logger.debug(f"Closed loop")
+
+    def _handle_task_done(self, task: asyncio.Task):
+        self.tasks.discard(task)
+        try:
+            task.exception()
+        except asyncio.exceptions.CancelledError:
+            pass
+
+    def create_task(self, coro) -> asyncio.Task:
+        """Creates and tracks a new task in the loop."""
+        if not self.loop:
+            self._maybe_create_loop()
+
+        self.logger.info(f"Adding task {coro}")
+        task = self.loop.create_task(coro)
+        self.tasks.add(task)
+        task.add_done_callback(self._handle_task_done)
+        return task
+
+    def kick(self):
+        """Performs one iteration of the event loop.
+        Returns True if there are no more tasks to run."""
+        if not self.loop or self.loop.is_closed():
+            return True
+
+        if not self._running:
+            return True
+
+        # Run one iteration of the loop
+        self.loop.call_soon(self.loop.stop)
+        self.loop.run_forever()
+
+        # Check if we have any tasks left
+        return len(self.tasks) == 0
+
+    @property
+    def running(self):
+        return self._running
+
+    def start(self):
+        """Starts the loop manager."""
+        self._running = True
+        self._maybe_create_loop()
+
+    def stop(self) -> None:
+        """Stops the loop manager and cleans up."""
+        self._running = False
+        self._close_loop()
 
 
-def setup_asyncio_executor():
-    """Sets up AsyncIO to run properly on each platform."""
-
-    import sys
-
-    if sys.platform == "win32":
-        asyncio.get_event_loop().close()
-        # On Windows, the default event loop is SelectorEventLoop, which does
-        # not support subprocesses. ProactorEventLoop should be used instead.
-        # Source: https://docs.python.org/3/library/asyncio-subprocess.html
-        loop = asyncio.ProactorEventLoop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.get_event_loop()
-
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-    loop.set_default_executor(executor)
-    # loop.set_debug(True)
-
-
-def kick_async_loop() -> bool:
-    """Performs a single iteration of the asyncio event loop.
-
-    :return: whether the asyncio loop should stop after this kick.
+class AsyncModalOperatorMixin:
+    """
+    Usage:
+        Inherit from this class and implement async_loop_manager_name and async_execute
     """
 
-    loop = asyncio.get_event_loop()
-
-    # Even when we want to stop, we always need to do one more
-    # 'kick' to handle task-done callbacks.
-    stop_after_this_kick = False
-
-    if loop.is_closed():
-        log.warning("loop closed, stopping immediately.")
-        return True
-
-    all_tasks = asyncio.all_tasks(loop)
-    if not len(all_tasks):
-        log.debug("no more scheduled tasks, stopping after this kick.")
-        stop_after_this_kick = True
-
-    elif all(task.done() for task in all_tasks):
-        log.debug(
-            "all %i tasks are done, fetching results and stopping after this kick.",
-            len(all_tasks),
-        )
-        stop_after_this_kick = True
-
-        # Clean up circular references between tasks.
-        gc.collect()
-
-        for task_idx, task in enumerate(all_tasks):
-            if not task.done():
-                continue
-
-            # noinspection PyBroadException
-            try:
-                res = task.result()
-                log.debug("   task #%i: result=%r", task_idx, res)
-            except asyncio.CancelledError:
-                # No problem, we want to stop anyway.
-                log.debug("   task #%i: cancelled", task_idx)
-            except Exception:
-                print("{}: resulted in exception".format(task))
-                traceback.print_exc()
-
-            # for ref in gc.get_referrers(task):
-            #     log.debug('      - referred by %s', ref)
-
-    loop.stop()
-    loop.run_forever()
-
-    return stop_after_this_kick
-
-
-def run_async_loop_until_complete():
-    stop_after_this_kick = False
-    while not stop_after_this_kick:
-        stop_after_this_kick = kick_async_loop()
-
-
-def ensure_async_loop():
-    log.debug("Starting asyncio loop")
-    result = bpy.ops.asyncio.loop()
-    log.debug("Result of starting modal operator is %r", result)
-
-
-def erase_async_loop():
-    global _loop_kicking_operator_running
-
-    log.debug("Erasing async loop")
-
-    loop = asyncio.get_event_loop()
-    loop.stop()
-
-
-class AsyncLoopModalOperator(bpy.types.Operator):
-    bl_idname = "asyncio.loop"
-    bl_label = "Runs the asyncio main loop"
+    async_loop_manager_name: str = NotImplemented
 
     timer = None
     logger = logging.getLogger(__name__ + ".AsyncLoopModalOperator")
 
-    def __del__(self):
-        global _loop_kicking_operator_running
-
-        # This can be required when the operator is running while Blender
-        # (re)loads a file. The operator then doesn't get the chance to
-        # finish the async tasks, hence stop_after_this_kick is never True.
-        _loop_kicking_operator_running = False
+    async def async_execute(self, context):
+        raise NotImplementedError()
 
     def execute(self, context):
         return self.invoke(context, None)
 
     def invoke(self, context, event):
-        global _loop_kicking_operator_running
+        async_loop_manager = AsyncLoopManager.register(self.async_loop_manager_name)
 
-        if _loop_kicking_operator_running:
-            self.logger.debug("Another loop-kicking operator is already running.")
+        async_loop_manager.create_task(self.async_execute(context))
+
+        if async_loop_manager.running:
+            self.logger.info(
+                f"AsyncLoopManager {async_loop_manager.name} already running"
+            )
             return {"PASS_THROUGH"}
 
         context.window_manager.modal_handler_add(self)
-        _loop_kicking_operator_running = True
-
         wm = context.window_manager
         self.timer = wm.event_timer_add(0.00001, window=context.window)
+
+        async_loop_manager.start()
 
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
-        global _loop_kicking_operator_running
-
-        # If _loop_kicking_operator_running is set to False, someone called
-        # erase_async_loop(). This is a signal that we really should stop
-        # running.
-        if not _loop_kicking_operator_running:
-            return {"FINISHED"}
-
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
 
-        self.logger.debug("KICKING LOOP")
-        try:
-            stop_after_this_kick = kick_async_loop()
-        except:
-            stop_after_this_kick = True
-        if stop_after_this_kick:
-            context.window_manager.event_timer_remove(self.timer)
-            _loop_kicking_operator_running = False
+        async_loop_manager = AsyncLoopManager.register(self.async_loop_manager_name)
 
+        stop_after_this_kick = async_loop_manager.kick()
+
+        if stop_after_this_kick:
+            async_loop_manager.stop()
+            context.window_manager.event_timer_remove(self.timer)
             self.logger.debug("Stopped asyncio loop kicking")
             return {"FINISHED"}
 
         return {"RUNNING_MODAL"}
-
-
-# noinspection PyAttributeOutsideInit
-class AsyncModalOperatorMixin:
-    async_task = None
-    signalling_future = (
-        None  # asyncio future for signalling that we want to cancel everything.
-    )
-    async_task_name = None  # Must be implemented in child class
-
-    @property
-    def logger(self):
-        return logging.getLogger(f"AsyncModalOperatorMixin('{self.async_task_name}')")
-
-    _state = "INITIALIZING"
-    stop_upon_exception = False
-
-    def invoke(self, context, event):
-        context.window_manager.modal_handler_add(self)
-        self.timer = context.window_manager.event_timer_add(
-            1 / 15, window=context.window
-        )
-
-        self.logger.info("Starting")
-        self._new_async_task(self.async_execute(context))
-
-        return {"RUNNING_MODAL"}
-
-    async def async_execute(self, context):
-        """Entry point of the asynchronous operator.
-
-        Implement in a subclass.
-        """
-        raise NotImplementedError()
-
-    def quit(self):
-        """Signals the state machine to stop this operator from running."""
-        self._state = "QUIT"
-
-    def execute(self, context):
-        return self.invoke(context, None)
-
-    def modal(self, context, event):
-        task = self.async_task
-
-        if self._state != "EXCEPTION" and task and task.done() and not task.cancelled():
-            ex = task.exception()
-            if ex is not None:
-                self._state = "EXCEPTION"
-                self.logger.error("Exception while running task: %s", ex)
-                if self.stop_upon_exception:
-                    self.quit()
-                    self._finish(context)
-                    return {"FINISHED"}
-
-                return {"RUNNING_MODAL"}
-
-        if self._state == "QUIT":
-            self._finish(context)
-            return {"FINISHED"}
-
-        return {"PASS_THROUGH"}
-
-    def _finish(self, context):
-        self._stop_async_task()
-        context.window_manager.event_timer_remove(self.timer)
-
-    def _new_async_task(
-        self, async_task: typing.Coroutine, future: asyncio.Future = None
-    ):
-        """Stops the currently running async task, and starts another one."""
-        self.logger.debug(
-            "Setting up a new task %r, so any existing task must be stopped", async_task
-        )
-        self._stop_async_task()
-
-        # Download the previews asynchronously.
-        self.signalling_future = future or asyncio.Future()
-        self.async_task = asyncio.ensure_future(async_task)
-        task_name = self.async_task_name
-        assert task_name is not None
-        self.async_task.set_name(task_name)
-        self.logger.debug("Created new task %r", self.async_task)
-
-        # Start the async manager so everything happens.
-        ensure_async_loop()
-
-    def _stop_async_task(self):
-        self.logger.debug("Stopping async task")
-        if self.async_task is None:
-            self.logger.debug("No async task, trivially stopped")
-            return
-
-        # Signal that we want to stop.
-        self.async_task.cancel()
-        if not self.signalling_future.done():
-            self.logger.info(
-                "Signalling that we want to cancel anything that's running."
-            )
-            self.signalling_future.cancel()
-
-        # Wait until the asynchronous task is done.
-        if not self.async_task.done():
-            self.logger.info("blocking until async task is done.")
-            loop = asyncio.get_event_loop()
-            try:
-                loop.run_until_complete(self.async_task)
-            except asyncio.CancelledError:
-                self.logger.info("Asynchronous task was cancelled")
-                return
-
-        # noinspection PyBroadException
-        try:
-            self.async_task.result()  # This re-raises any exception of the task.
-        except asyncio.CancelledError:
-            self.logger.info("Asynchronous task was cancelled")
-        except Exception:
-            self.logger.exception("Exception from asynchronous task")
-
-    @classmethod
-    def cancel_tasks(cls):
-        assert cls.async_task_name is not None
-        try:
-            tasks = asyncio.all_tasks()
-        except:
-            tasks = []
-
-        for task in tasks:
-            if task.get_name().startswith(cls.async_task_name):
-                logging.info("Cancelling task!", task)
-                task.cancel()

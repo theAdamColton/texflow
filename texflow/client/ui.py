@@ -1,5 +1,4 @@
 import uuid
-import json
 import aiohttp
 import io
 import bpy
@@ -8,7 +7,7 @@ from .utils import to_image16
 from .camera import ensure_temp_camera
 from .uv import uv_proj
 from ..state import TexflowState, TexflowStatus
-from .async_loop import AsyncModalOperatorMixin
+from .async_loop import AsyncLoopManager, AsyncModalOperatorMixin
 from .depth import render_depth_map
 
 
@@ -55,11 +54,18 @@ class TexflowProperties(bpy.types.PropertyGroup):
     )
 
 
-class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin):
+class TexflowAsyncOperator(AsyncModalOperatorMixin):
+    async_loop_manager_name = "TexflowAsyncLoop"
+
+    @staticmethod
+    def get_async_manager():
+        return AsyncLoopManager.register(TexflowAsyncOperator.async_loop_manager_name)
+
+
+class TexflowConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
     bl_label = "Connect to ComfyUI"
     bl_idname = "texflow.connect_to_comfy"
     bl_description = "Connect to ComfyUI"
-    async_task_name = "texflow.connect_to_comfy"
 
     async def async_execute(self, context):
         texflow_state = get_texflow_state()
@@ -87,16 +93,11 @@ class TexflowConnectToComfyOperator(bpy.types.Operator, AsyncModalOperatorMixin)
         finally:
             texflow_state.status = TexflowStatus.PENDING
 
-        self.quit()
 
-
-class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
+class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
     bl_label = "Render Depth Image"
     bl_idname = "texflow.render_depth_image"
     bl_description = "Render a depth image and send it to comfyui"
-    async_task_name = "texflow.render_depth_image"
-
-    stop_upon_exception = True
 
     @classmethod
     def poll(cls, context):
@@ -159,8 +160,6 @@ class RenderDepthImageOperator(bpy.types.Operator, AsyncModalOperatorMixin):
                 self.logger.info(f"Got post result {result}")
 
         print("RENDER DEPTH IMAGE DONE!")
-
-        self.quit()
 
 
 class TexflowPanel(bpy.types.Panel):

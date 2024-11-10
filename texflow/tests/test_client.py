@@ -1,3 +1,4 @@
+import nest_asyncio
 import logging
 import aiohttp
 import uuid
@@ -14,7 +15,7 @@ from texflow.state import TexflowStatus
 from ..client.uv import uv_proj
 from ..client.depth import render_depth_map
 from ..client.utils import select_obj
-from ..client.ui import get_texflow_state
+from ..client.ui import TexflowAsyncOperator, get_texflow_state
 from ..client import register, unregister
 from ..tests.utils import TestCase, save_image
 from ..client.utils import to_image16
@@ -203,9 +204,15 @@ class TestClientServer(AioHTTPTestCase):
         texflow.comfyui_url = self.url
         bpy.ops.texflow.connect_to_comfy()
 
-        async with asyncio.timeout(10):
+        async_loop_mgr = TexflowAsyncOperator.get_async_manager()
+        self.assertIsNotNone(async_loop_mgr.loop)
+        # needed for nested async loops
+        nest_asyncio.apply(async_loop_mgr.loop)
+
+        async with asyncio.timeout(5):
             while get_texflow_state().status == TexflowStatus.PENDING:
                 await asyncio.sleep(0.1)
+                async_loop_mgr.kick()
 
         self.assertEqual(get_texflow_state().status, TexflowStatus.READY)
         self.assertIsNotNone(get_texflow_state().client_id)
@@ -225,8 +232,15 @@ class TestClientServer(AioHTTPTestCase):
         texflow.width = 16
         bpy.ops.texflow.render_depth_image()
 
-        async with asyncio.timeout(10):
+        async_loop_mgr = TexflowAsyncOperator.get_async_manager()
+        self.assertIsNotNone(async_loop_mgr.loop)
+
+        # needed for nested async loops
+        nest_asyncio.apply(async_loop_mgr.loop)
+
+        async with asyncio.timeout(5):
             while self.depth_image_post is None:
                 await asyncio.sleep(0.1)
+                async_loop_mgr.kick()
 
         self.assertIn("image", self.depth_image_post)
