@@ -9,8 +9,6 @@ from .scene import ensure_texflow_temp_scene
 def uv_proj(
     obj: bpy.types.Object,
     camera_obj: bpy.types.Object = None,
-    height=512,
-    width=512,
 ):
     mesh = obj.data
     assert isinstance(mesh, bpy.types.Mesh)
@@ -22,8 +20,6 @@ def uv_proj(
     with ensure_texflow_temp_scene() as temp_scene:
         temp_scene.collection.objects.link(obj)
         temp_scene.collection.objects.link(camera_obj)
-        temp_scene.render.resolution_y = height
-        temp_scene.render.resolution_x = width
 
         select_obj(obj)
 

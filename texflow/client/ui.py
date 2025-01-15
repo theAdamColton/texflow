@@ -39,21 +39,6 @@ class TexflowProperties(bpy.types.PropertyGroup):
         default="127.0.0.1:8188",
     )
 
-    height: bpy.props.IntProperty(
-        description="Height of generated depth map",
-        min=16,
-        max=8192,
-        default=512,
-        name="Height",
-    )
-    width: bpy.props.IntProperty(
-        description="Width of generated depth map",
-        min=16,
-        max=8192,
-        default=512,
-        name="Width",
-    )
-
 
 class TexflowAsyncOperator(AsyncModalOperatorMixin):
     async_loop_manager_name = "TexflowAsyncLoop"
@@ -104,7 +89,7 @@ class ConnectToComfyOperator(TexflowAsyncOperator, bpy.types.Operator):
 class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
     bl_label = "Render Depth Image"
     bl_idname = "texflow.render_depth_image"
-    bl_description = "Render a depth image and send it to comfyui"
+    bl_description = "Render a depth image and sends it to comfyui"
 
     @classmethod
     def poll(cls, context):
@@ -120,8 +105,6 @@ class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
     async def async_execute(self, context):
         texflow_state = get_texflow_state()
         texflow = context.scene.texflow
-        height = texflow.height
-        width = texflow.width
         camera_obj = texflow.camera
         obj = context.active_object
 
@@ -129,14 +112,10 @@ class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
             depth_map, depth_occupancy = render_depth_map(
                 obj=obj,
                 camera_obj=camera_obj,
-                height=height,
-                width=width,
             )
             uv_layer = uv_proj(
                 obj=obj,
                 camera_obj=camera_obj,
-                height=height,
-                width=width,
             )
 
         # controlnet uses an inverted depth map
@@ -160,11 +139,15 @@ class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
 
         logging.info(f"Posting depth image to {image_post_url}")
 
-        async with aiohttp.ClientSession() as sess:
-            async with sess.post(image_post_url, data=form_data) as response:
-                logging.info(f"Got post response {response}")
-                result = await response.json()
-                logging.info(f"Got post result {result}")
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.post(image_post_url, data=form_data) as response:
+                    logging.info(f"Got post response {response}")
+                    result = await response.json()
+                    logging.info(f"Got post result {result}")
+        except Exception as e:
+            self.report({"WARNING"}, f"Error sending depth image to ComfyUI {e}")
+            raise e
 
         print("RENDER DEPTH IMAGE DONE!")
 
@@ -202,7 +185,5 @@ class TexflowPanel(bpy.types.Panel):
         layout.separator(factor=2)
 
         layout.prop_search(texflow, "camera", bpy.data, "objects")
-        layout.prop(texflow, "height")
-        layout.prop(texflow, "width")
         row = layout.row()
         row.operator(RenderDepthImageOperator.bl_idname)

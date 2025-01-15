@@ -49,13 +49,12 @@ class TestClient(TestCase):
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
         camera = bpy.context.active_object
 
-        height, width = 256, 256
-        depth_map, occupancy = render_depth_map(obj, camera, height=height, width=width)
+        depth_map, occupancy = render_depth_map(obj, camera)
 
         test_dir = self.get_test_dir()
         save_image(depth_map, test_dir / "depth_map.png")
 
-        self.assertEqual((height, width), depth_map.shape)
+        height, width = depth_map.shape
 
         # the middle pixel should not be max distance
         self.assertLess(depth_map[height // 2, width // 2].item(), 1.0)
@@ -66,14 +65,10 @@ class TestClient(TestCase):
         select_obj(obj)
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
         camera = bpy.context.active_object
-        height, width = 256, 256
-
         extra_background_distance = 0.1
         depth_map, occupancy = render_depth_map(
             obj,
             camera,
-            height=height,
-            width=width,
             extra_background_distance=extra_background_distance,
         )
 
@@ -85,10 +80,8 @@ class TestClient(TestCase):
         """
         tests that all the u,vs projected by this cube are visible from the camera
         """
-        height = 512
-        width = 512
         bpy.ops.object.camera_add(
-            location=(0.0, -4.0, 0.0), rotation=(math.pi / 2, 0, 0)
+            location=(0.0, -9.0, 0.0), rotation=(math.pi / 2, 0, 0)
         )
         camera_obj = bpy.context.active_object
 
@@ -98,7 +91,7 @@ class TestClient(TestCase):
 
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
-        uv_proj(obj, camera_obj, height=height, width=width)
+        uv_proj(obj, camera_obj)
 
         me = obj.data
         select_obj(obj)
@@ -133,14 +126,11 @@ class TestClient(TestCase):
         select_obj(obj)
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0), rotation=(1.5, 0, 0))
         camera = bpy.context.active_object
-        height, width = 256, 256
 
         extra_background_distance = 0.0
         depth_map, occupancy = render_depth_map(
             obj,
             camera,
-            height=height,
-            width=width,
             extra_background_distance=extra_background_distance,
         )
 
@@ -255,8 +245,6 @@ class TestClientServer(AioHTTPTestCase):
         select_obj(obj)
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
-        texflow.height = 16
-        texflow.width = 16
 
         bpy.ops.texflow.render_depth_image()
 
@@ -297,8 +285,6 @@ class TestClientServer(AioHTTPTestCase):
         select_obj(obj)
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.select_all(action="SELECT")
-        texflow.height = 16
-        texflow.width = 16
 
         bpy.ops.texflow.render_depth_image()
         async with asyncio.timeout(2):

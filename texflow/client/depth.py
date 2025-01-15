@@ -30,8 +30,6 @@ def get_render_pixels():
 def render_depth_map(
     obj: bpy.types.Object = None,
     camera_obj: bpy.types.Object = None,
-    height=512,
-    width=512,
     extra_background_distance=0.0,
 ):
     """
@@ -55,8 +53,6 @@ def render_depth_map(
         view_layer.use_pass_z = True
 
         temp_scene.render.film_transparent = True
-        temp_scene.render.resolution_y = height
-        temp_scene.render.resolution_x = width
         temp_scene.render.image_settings.file_format = "OPEN_EXR"
 
         # Enable compositing nodes
