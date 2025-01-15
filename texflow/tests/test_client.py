@@ -128,3 +128,46 @@ class TestClient(TestCase):
         im = to_image16(depth_map)
         rec_depth_map = np.asarray(im) / (2**16 - 1)
         self.assertTrue(np.allclose(depth_map, rec_depth_map, 1e-4, 1e-4))
+
+    def test_render_depth_and_geo_image_suzanne(self):
+        bpy.ops.mesh.primitive_monkey_add()
+        obj = bpy.context.object
+        select_obj(obj)
+        bpy.ops.object.camera_add(location=(6.0, -6.0, 4.0), rotation=(1.1, 0, 0.8))
+        camera = bpy.context.active_object
+        extra_background_distance = 0.0
+        depth_map, occupancy = render_depth_map(
+            obj,
+            camera,
+            extra_background_distance=extra_background_distance,
+        )
+
+        im = to_image16(depth_map)
+        im.save(self.get_test_dir() / "depth_image.png")
+        height, width = depth_map.shape
+
+        select_obj(obj)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        uv_layer = uv_proj(obj, camera)
+
+        me = obj.data
+        select_obj(obj)
+        bm = bmesh.from_edit_mesh(me)
+
+        uv_layer = bm.loops.layers.uv.verify()
+
+        # renders the uv coords as dots on an image
+        uv_image = np.zeros((height, width))
+        for face in bm.faces:
+            for loop in face.loops:
+                loop_uv = loop[uv_layer]
+                uv = loop_uv.uv
+                x, y = uv.x, uv.y
+                # need to flip height coord
+                y = 1 - y
+                # x and y refer to width and height respectively
+                i, j = int(y * height), int(x * width)
+                uv_image[i, j] = 1
+        uv_image = to_image16(uv_image)
+        uv_image.save(self.get_test_dir() / "uv_image.png")

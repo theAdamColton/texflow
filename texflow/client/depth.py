@@ -77,6 +77,9 @@ def render_depth_map(
 
         depth_image = get_render_pixels()
 
+        # flips the height direction
+        depth_image = depth_image[::-1, :, :]
+
         depth_image, occupancy = depth_image[..., 0], depth_image[..., 3]
         # I use a high threshold for the alpha
         # channel to esitmate the min/max of the depth image
