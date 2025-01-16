@@ -51,6 +51,11 @@ Then find the zip file you downloaded and install it.
 ![image](https://github.com/user-attachments/assets/505a8dca-bc94-4c4e-9411-2be90406d51a)
 
 
+# tips and tricks
+
+* Use an orthographic camera to get a wider view of the object
+* stretch out your object in 3D away and towards the camera to play with the effect of strengthing/weakening the depth
+
 # how it works (for coders)
 
 The code is split into a Blender extension, and a ComfyUI extension. 
