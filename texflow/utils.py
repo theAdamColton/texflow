@@ -1,4 +1,3 @@
-import numpy as np
 from pathlib import Path
 import toml
 
@@ -27,7 +26,7 @@ def make_blender_manifest_dict():
         tags=["Paint"],
         blender_version_min="4.2.0",
         license=[
-            "SPDX:GPL-2.0-or-later",
+            "SPDX:GPL-3.0-or-later",
         ],
         platforms=["windows-x64", "macos-arm64", "linux-x64"],
     )
