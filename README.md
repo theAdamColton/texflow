@@ -18,6 +18,21 @@ Unlike other extensions such as [Shaamallow/texture-diffusion](https://github.co
 
 # installation
 
+texflow supports MacOS (Arm), Windows, and Linux. You need to have an existing installation of ComfyUI.
+
+First, install the ComfyUI extension by navigating to your ComfyUI directory, and then the `custom_nodes` directory. Clone [ComfyUI-texflow-extension](https://github.com/theAdamColton/ComfyUI-texflow-extension) into this directory:
+
+`git clone https://github.com/theAdamColton/ComfyUI-texflow-extension`
+
+You can verify that the ComfyUI extension installed correctly by checking that there is a new node submenu called "texflow"
+<img src=https://github.com/user-attachments/assets/9ebdc9ad-607c-47c8-bb87-19f55b602a41 width=300px />
+
+
+Next, download the [latest Blender extension zip](https://github.com/theAdamColton/texflow/releases/latest), picking the corresponding one for your operating system. For example if your system is Windows, you should download the file the looks like adam_colton_texflow-x.x.x-windows_x64.zip.  Install this extension in Blender by navigating to Preferences->Get Extensions->arrow in top right corner->Install From Disk
+
+<img src=https://github.com/user-attachments/assets/8bee46a6-5d53-43b6-ba7c-dd0a5e258d59 width=400px />
+
+Then find the zip file you downloaded and install it.
 
 # usage
 
