@@ -7,8 +7,8 @@ from .ui import (
     TexflowProperties,
     TexflowPanel,
     RenderDepthImageOperator,
+    LoadComfyUIImages,
     TexflowAsyncOperator,
-    ConnectToComfyOperator,
 )
 
 
@@ -30,8 +30,8 @@ bl_info = {
 classes = (
     TexflowPanel,
     RenderDepthImageOperator,
+    LoadComfyUIImages,
     TexflowProperties,
-    ConnectToComfyOperator,
 )
 
 
