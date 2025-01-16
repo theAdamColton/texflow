@@ -31,8 +31,6 @@ def render_depth_map(
     obj: bpy.types.Object = None,
     camera_obj: bpy.types.Object = None,
     extra_background_distance=0.0,
-    height: int | None = None,
-    width: int | None = None,
 ):
     """
     obj: Object to be rendered
@@ -41,12 +39,6 @@ def render_depth_map(
     extra_background_distance: Extra distance to be added
       for the background behind the object
     """
-
-    # Defaults to the render resolution of the current scene
-    if height is None:
-        height = bpy.context.scene.render.resolution_y
-    if width is None:
-        width = bpy.context.scene.render.resolution_x
 
     # create a new scene to ensure that
     # render settings are all as expected

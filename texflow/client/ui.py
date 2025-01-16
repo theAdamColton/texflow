@@ -86,6 +86,8 @@ class RenderDepthImageOperator(TexflowAsyncOperator, bpy.types.Operator):
                 camera_obj=camera_obj,
             )
 
+        logging.info(f"Rendered depth map, shape {depth_map.shape}")
+
         uv_layer.name = f"TexflowUVLayer-{render_id}"
 
         # controlnet uses an inverted depth map
